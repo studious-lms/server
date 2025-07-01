@@ -1,7 +1,7 @@
 {
-  "name": "@your-org/easy-lms-server",
+  "name": "@studious-lms/server",
   "version": "1.0.0",
-  "description": "Backend server for Easy LMS application",
+  "description": "Backend server for Studious application",
   "main": "dist/exportType.js",
   "types": "dist/exportType.d.ts",
   "files": [

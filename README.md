@@ -1,6 +1,6 @@
-# Easy LMS Backend Server
+# Studious Backend Server
 
-This is the backend server for the Easy LMS application. It provides a RESTful and real-time API for managing users, classes, assignments, attendance, and more, supporting both HTTP (via tRPC) and WebSocket (via Socket.IO) communication.
+This is the backend server for the Studious application. It provides a RESTful and real-time API for managing users, classes, assignments, attendance, and more, supporting both HTTP (via tRPC) and WebSocket (via Socket.IO) communication.
 
 ## Features
 

@@ -17,9 +17,22 @@
       "@types/*": ["./src/types/*"],
       "@middleware/*": ["./src/middleware/*"],
       "@/logger": ["./src/logger.ts"]
-    }
+    },
+    "declaration": true,
+    "declarationMap": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"],
-  "extends": "../tsconfig.json"
+  "files": [
+    "dist/**/*",
+    "generated/**/*",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "ts-node-dev -r tsconfig-paths/register --respawn --transpile-only src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "generate": "npx prisma generate",
+    "prepublishOnly": "npm run generate && npm run build"
+  }
 } 

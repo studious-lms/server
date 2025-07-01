@@ -1,0 +1,228 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  // output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AssignmentType {
+  HOMEWORK
+  QUIZ
+  TEST
+  PROJECT
+  ESSAY
+  DISCUSSION
+  PRESENTATION
+  LAB
+  OTHER
+}
+
+
+model User {
+  id           String      @id @default(uuid())
+  username     String
+  email        String
+  password     String
+  profile      UserProfile?
+  verified     Boolean     @default(false)
+
+  profileId    String?     @unique
+
+  teacherIn   Class[] @relation("UserTeacherToClass")
+  studentIn   Class[] @relation("UserStudentToClass")
+
+  submissions Submission[]
+  sessions    Session[]
+  files       File[]
+  assignments Assignment[]
+  events      Event[]
+  announcements Announcement[]
+
+  presentAttendance  Attendance[] @relation("PresentAttendance")
+  lateAttendance    Attendance[] @relation("LateAttendance")
+  absentAttendance  Attendance[] @relation("AbsentAttendance")
+}
+
+model UserProfile {
+  id String @id @default(uuid())
+  userId String @unique
+  user User? @relation(fields: [userId], references: [id])
+
+} 
+
+model Class {
+  id            String         @id @default(uuid())
+  name          String
+  subject       String
+  color         String?        @default("#3B82F6")
+  section       String
+  announcements Announcement[]
+  assignments   Assignment[]
+  attendance    Attendance[]
+  events        Event[]
+  sections      Section[]
+  sessions      Session[]
+  students      User[]         @relation("UserStudentToClass")
+  teachers      User[]         @relation("UserTeacherToClass")
+  markSchemes   MarkScheme[] @relation("ClassToMarkScheme")
+  gradingBoundaries GradingBoundary[] @relation("ClassToGradingBoundary")
+}
+
+model MarkScheme {
+  id String @id @default(uuid())
+  classId String
+  class Class[] @relation("ClassToMarkScheme")
+  structured String
+  assignments Assignment[]
+}
+
+model GradingBoundary {
+  id String @id @default(uuid())
+  classId String
+  class Class[] @relation("ClassToGradingBoundary")
+  structured String
+  assignments Assignment[]
+}
+
+model File {
+  id         String @id @default(uuid())
+  name       String
+  path       String
+  size       Int?
+  type       String
+  user       User? @relation(fields: [userId], references: [id])
+  userId     String?
+  uploadedAt DateTime? @default(now())
+
+  // Thumbnail relationship
+  thumbnail   File?  @relation("Thumbnail", fields: [thumbnailId], references: [id])
+  thumbnailId String? @unique
+  originalFile File? @relation("Thumbnail")
+
+  assignment Assignment? @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  assignmentId String?
+
+  submission Submission? @relation("SubmissionFile", fields: [submissionId], references: [id], onDelete: Cascade)
+  submissionId String?
+
+  annotations Submission? @relation("SubmissionAnnotations", fields: [annotationId], references: [id], onDelete: Cascade)
+  annotationId String?
+}
+
+model Assignment {
+  id            String         @id @default(uuid())
+  title         String
+  instructions  String
+  dueDate       DateTime
+  createdAt     DateTime?      @default(now())
+  modifiedAt    DateTime?      @updatedAt
+  teacher       User           @relation(fields: [teacherId], references: [id], onDelete: NoAction)
+  teacherId     String
+  class         Class          @relation(fields: [classId], references: [id], onDelete: Cascade)
+  classId       String
+  attachments   File[]
+  submissions   Submission[]
+  section       Section?       @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  sectionId     String?
+  graded        Boolean        @default(false)
+  maxGrade      Int?          @default(0)
+  weight        Float         @default(1)
+  type          AssignmentType @default(HOMEWORK)
+  eventAttached Event?        @relation(fields: [eventId], references: [id], onDelete: NoAction)
+  eventId       String?
+  markScheme    MarkScheme? @relation(fields: [markSchemeId], references: [id], onDelete: Cascade)
+  markSchemeId  String?
+  gradingBoundary GradingBoundary? @relation(fields: [gradingBoundaryId], references: [id], onDelete: Cascade)
+  gradingBoundaryId String?
+}
+
+model Announcement {
+  id      String @id @default(uuid())
+  remarks String
+  teacher User @relation(fields: [teacherId], references: [id])
+  teacherId String
+  createdAt DateTime @default(now())
+  class   Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  classId String
+}
+
+model Submission {
+  id      String @id @default(uuid())
+  createdAt DateTime @default(now())
+  modifiedAt DateTime @default(now())
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  assignmentId String
+
+  student User @relation(fields: [studentId], references: [id])
+  studentId String
+
+  attachments File[]  @relation("SubmissionFile")
+  annotations File[]  @relation("SubmissionAnnotations")
+
+  gradeReceived Int?
+
+  rubricState String?
+
+  submittedAt DateTime?
+  submitted   Boolean? @default(false)
+  returned    Boolean? @default(false)
+}
+
+model Section {
+  id        String @id @default(uuid())
+  name      String
+  classId   String
+  class     Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  assignments Assignment[]
+}
+
+model Session {
+  id        String @id @default(uuid())
+  createdAt DateTime? @default(now())
+  expiresAt DateTime?
+  userId    String?
+  user      User? @relation(fields: [userId], references: [id], onDelete: NoAction)
+  classId   String?
+  class     Class? @relation(fields: [classId], references: [id], onDelete: Cascade)
+}
+
+model Event {
+  id        String @id @default(uuid())
+  name      String?
+  startTime DateTime
+  endTime   DateTime
+  location  String?
+  remarks   String?
+  userId    String?
+  user      User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  classId   String?
+  class     Class? @relation(fields: [classId], references: [id], onDelete: Cascade)
+  color         String? @default("#3B82F6")
+  assignmentsAttached Assignment[]
+  attendance Attendance[]
+}
+
+model Attendance {
+  id        String   @id @default(uuid())
+  date      DateTime @default(now())
+  
+  class     Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  classId   String
+
+  event     Event?   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId   String?
+
+  present   User[]   @relation("PresentAttendance")
+  late      User[]   @relation("LateAttendance")
+  absent    User[]   @relation("AbsentAttendance")
+}

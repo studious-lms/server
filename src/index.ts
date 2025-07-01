@@ -55,7 +55,7 @@ const io = new Server(httpServer, {
 });
 
 // Add server-level logging
-io.engine.on('connection_error', (err) => {
+io.engine.on('connection_error', (err: Error) => {
   logger.error('Socket connection error', { error: err.message });
 });
 

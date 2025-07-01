@@ -5,11 +5,11 @@ export const setupSocketHandlers = (io: Server) => {
   io.on('connection', (socket: Socket) => {
     logger.info('Client connected', { socketId: socket.id });
 
-    socket.on('disconnect', (reason) => {
+    socket.on('disconnect', (reason: string) => {
       logger.info('Client disconnected', { socketId: socket.id, reason });
     });
 
-    socket.on('error', (error) => {
+    socket.on('error', (error: Error) => {
       logger.error('Socket error', { socketId: socket.id, error });
     });
 
@@ -29,7 +29,7 @@ export const setupSocketHandlers = (io: Server) => {
       logger.info('Class updated', { class: data.class });
     });
 
-    socket.on('join-class', (classId: string, callback) => {
+    socket.on('join-class', (classId: string, callback: (classId: string) => void) => {
       try {
         socket.join(`class-${classId}`);
         logger.info('Client joined class room', { socketId: socket.id, classId });
@@ -42,7 +42,7 @@ export const setupSocketHandlers = (io: Server) => {
       } catch (error) {
         logger.error('Error joining class room', { socketId: socket.id, classId, error });
         if (callback) {
-          callback(null);
+          callback(classId);
         }
       }
     });

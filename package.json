@@ -1,14 +1,15 @@
 {
   "name": "@studious-lms/server",
-  "version": "1.0.2",
+  "version": "1.0.6",
   "description": "Backend server for Studious application",
   "main": "dist/exportType.js",
   "types": "dist/exportType.d.ts",
-  "files": [
-    "dist/**/*",
-    "generated/**/*",
-    "README.md"
-  ],
+  "exports": {
+    ".": {
+      "types": "./dist/exportType.d.ts",
+      "default": "./dist/exportType.js"
+    }
+  },
   "scripts": {
     "dev": "ts-node-dev -r tsconfig-paths/register --respawn --transpile-only src/index.ts",
     "build": "tsc",
@@ -19,7 +20,7 @@
   "dependencies": {
     "@google-cloud/storage": "^7.16.0",
     "@prisma/client": "^6.7.0",
-    "@trpc/server": "^11.1.2",
+    "@trpc/server": "^11.4.3",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "date-fns": "^4.1.0",

@@ -73,6 +73,7 @@ export const authRouter = createTRPCRouter({
           email,
           password: await hash(password, 10),
           profile: {},
+          verified: true, // temporary
         },
         select: {
           id: true,
@@ -89,12 +90,14 @@ export const authRouter = createTRPCRouter({
         },
       });
 
-      await transport.sendMail({
-        from: 'noreply@studious.sh',
-        to: user.email,
-        subject: 'Verify your email',
-        text: `Click the link to verify your email: ${process.env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`,
-      });
+      // await transport.sendMail({
+      //   from: 'noreply@studious.sh',
+      //   to: user.email,
+      //   subject: 'Verify your email',
+      //   text: `Click the link to verify your email: ${process.env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`,
+      // });
+
+      console.log(`${process.env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`)
 
       return {
         user: {
@@ -127,7 +130,7 @@ export const authRouter = createTRPCRouter({
         });
       }
 
-      if (await compare(password, user.password)) {
+      if (!(await compare(password, user.password))) {
         throw new TRPCError({
           code: "UNAUTHORIZED",
           message: "Invalid username or password",
@@ -240,12 +243,12 @@ export const authRouter = createTRPCRouter({
           },
         });
         
-        await transport.sendMail({
-          from: 'noreply@studious.sh',
-          to: user.email,
-          subject: 'Verify your email',
-          text: `Click the link to verify your email: ${process.env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`,
-        });
+        // await transport.sendMail({
+        //   from: 'noreply@studious.sh',
+        //   to: user.email,
+        //   subject: 'Verify your email',
+        //   text: `Click the link to verify your email: ${process.env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`,
+        // });
 
         return { success: true };
       }),
@@ -279,6 +282,11 @@ export const authRouter = createTRPCRouter({
           data: {
             verified: true,
           },
+        });
+
+        // Clean up the verification token
+        await prisma.session.delete({
+          where: { id: token },
         });
 
         return { success: true };

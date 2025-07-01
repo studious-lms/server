@@ -1,5 +1,5 @@
-import type { MiddlewareContext } from '@/types/trpc';
-import { logger } from '@/logger';
+import type { MiddlewareContext } from '../types/trpc';
+import { logger } from '../utils/logger';
 
 export const createLoggingMiddleware = (t: any) => {
   return t.middleware(async ({ path, type, next, ctx }: MiddlewareContext) => {

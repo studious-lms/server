@@ -3,7 +3,7 @@ import { classRouter } from "./class";
 import { announcementRouter } from "./announcement";
 import { assignmentRouter } from "./assignment";
 import { userRouter } from "./user";
-import { createCallerFactory } from '@/trpc';
+import { createCallerFactory } from "../trpc";
 import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import { sectionRouter } from "./section";
 import { attendanceRouter } from "./attendance";

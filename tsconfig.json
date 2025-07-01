@@ -8,16 +8,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "outDir": "dist",
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./src/*"],
-      "@lib/*": ["./src/lib/*"],
-      "@routers/*": ["./src/routers/*"],
-      "@utils/*": ["./src/utils/*"],
-      "@types/*": ["./src/types/*"],
-      "@middleware/*": ["./src/middleware/*"],
-      "@/logger": ["./src/logger.ts"]
-    },
+    "baseUrl": ".", 
     "declaration": true,
     "declarationMap": true
   },

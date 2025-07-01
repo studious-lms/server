@@ -1,7 +1,7 @@
 import { initTRPC, TRPCError } from '@trpc/server';
 import { ZodError } from 'zod';
-import { logger } from '@utils/logger';
-import { prisma } from '@lib/prisma';
+import { logger } from './utils/logger';
+import { prisma } from './lib/prisma';
 import { createLoggingMiddleware } from './middleware/logging';
 import { createAuthMiddleware } from './middleware/auth';
 import { Request, Response } from 'express';

@@ -22,17 +22,5 @@
     "declarationMap": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"],
-  "files": [
-    "dist/**/*",
-    "generated/**/*",
-    "README.md"
-  ],
-  "scripts": {
-    "dev": "ts-node-dev -r tsconfig-paths/register --respawn --transpile-only src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "generate": "npx prisma generate",
-    "prepublishOnly": "npm run generate && npm run build"
-  }
+  "exclude": ["node_modules", "dist"]
 } 

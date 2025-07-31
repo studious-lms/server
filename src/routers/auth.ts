@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma";
 import { v4 as uuidv4 } from 'uuid';
 import { compare, hash } from "bcryptjs";
 import { transport } from "../utils/email";
+import { prismaWrapper } from "../utils/prismaWrapper";
 
 const loginSchema = z.object({
   username: z.string(),
@@ -28,20 +29,23 @@ export const authRouter = createTRPCRouter({
       const { username, email, password } = input;
 
       // Check if username already exists
-      const existingUser = await prisma.user.findFirst({
-        where: { 
-          OR: [
-            { username },
-            { email }
-          ]
-        },
-        select: {
-          id: true,
-          username: true,
-          email: true,
-          verified: true,
-        }
-      });
+      const existingUser = await prismaWrapper.findFirst(
+        () => prisma.user.findFirst({
+          where: { 
+            OR: [
+              { username },
+              { email }
+            ]
+          },
+          select: {
+            id: true,
+            username: true,
+            email: true,
+            verified: true,
+          }
+        }),
+        'checking for existing user during registration'
+      );
 
       if (existingUser && existingUser.verified) {
         if (existingUser.username === username) {
@@ -57,38 +61,50 @@ export const authRouter = createTRPCRouter({
           });
         }
       } else if (existingUser && !existingUser.verified) {
-        await prisma.session.deleteMany({
-          where: { userId: existingUser.id },
-        });
+        await prismaWrapper.deleteMany(
+          () => prisma.session.deleteMany({
+            where: { userId: existingUser.id },
+          }),
+          'deleting existing sessions for unverified user'
+        );
 
-        await prisma.user.delete({
-          where: { id: existingUser.id },
-        });
+        await prismaWrapper.delete(
+          () => prisma.user.delete({
+            where: { id: existingUser.id },
+          }),
+          'deleting unverified user'
+        );
       }
 
       // Create new user
-      const user = await prisma.user.create({
-        data: {
-          username,
-          email,
-          password: await hash(password, 10),
-          profile: {},
-          verified: true, // temporary
-        },
-        select: {
-          id: true,
-          username: true,
-          email: true,
-        }
-      });
+      const user = await prismaWrapper.create(
+        async () => await prisma.user.create({
+          data: {
+            username,
+            email,
+            password: await hash(password, 10),
+            profile: {},
+            verified: true, // temporary
+          },
+          select: {
+            id: true,
+            username: true,
+            email: true,
+          }
+        }),
+        'creating new user during registration'
+      );
 
-      const verificationToken = await prisma.session.create({
-        data: {
-          id: uuidv4(),
-          userId: user.id,
-          expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
-        },
-      });
+      const verificationToken = await prismaWrapper.create(
+        () => prisma.session.create({
+          data: {
+            id: uuidv4(),
+            userId: user.id,
+            expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
+          },
+        }),
+        'creating verification token'
+      );
 
       // await transport.sendMail({
       //   from: 'noreply@studious.sh',

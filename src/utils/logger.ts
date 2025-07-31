@@ -107,9 +107,16 @@ class Logger {
   }
 
   private log(level: LogLevel, message: string, context?: Record<string, any>) {
-    // if (this.shouldLog(level)) 
-    //   return;    
-
+    if (!this.shouldLog(level)) 
+      return;    
+    
+    if (level == LogLevel.WARN || level == LogLevel.ERROR) {
+      if (level == LogLevel.ERROR) {
+        // alert me
+      }
+      // store in database
+    }
+    
     const logMessage: LogMessage = {
       level,
       message,

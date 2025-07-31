@@ -18,6 +18,7 @@ const createAssignmentSchema = z.object({
   instructions: z.string(),
   dueDate: z.string(),
   files: z.array(fileSchema).optional(),
+  existingFileIds: z.array(z.string()).optional(),
   maxGrade: z.number().optional(),
   graded: z.boolean().optional(),
   weight: z.number().optional(),
@@ -25,6 +26,7 @@ const createAssignmentSchema = z.object({
   type: z.enum(['HOMEWORK', 'QUIZ', 'TEST', 'PROJECT', 'ESSAY', 'DISCUSSION', 'PRESENTATION', 'LAB', 'OTHER']).optional(),
   markSchemeId: z.string().optional(),
   gradingBoundaryId: z.string().optional(),
+  inProgress: z.boolean().optional(),
 });
 
 const updateAssignmentSchema = z.object({
@@ -34,12 +36,14 @@ const updateAssignmentSchema = z.object({
   instructions: z.string().optional(),
   dueDate: z.string().optional(),
   files: z.array(fileSchema).optional(),
+  existingFileIds: z.array(z.string()).optional(),
   removedAttachments: z.array(z.string()).optional(),
   maxGrade: z.number().optional(),
   graded: z.boolean().optional(),
   weight: z.number().optional(),
   sectionId: z.string().nullable().optional(),
   type: z.enum(['HOMEWORK', 'QUIZ', 'TEST', 'PROJECT', 'ESSAY', 'DISCUSSION', 'PRESENTATION', 'LAB', 'OTHER']).optional(),
+  inProgress: z.boolean().optional(),
 });
 
 const deleteAssignmentSchema = z.object({
@@ -58,6 +62,7 @@ const submissionSchema = z.object({
   submissionId: z.string(),
   submit: z.boolean().optional(),
   newAttachments: z.array(fileSchema).optional(),
+  existingFileIds: z.array(z.string()).optional(),
   removedAttachments: z.array(z.string()).optional(),
 });
 
@@ -68,6 +73,7 @@ const updateSubmissionSchema = z.object({
   return: z.boolean().optional(),
   gradeReceived: z.number().nullable().optional(),
   newAttachments: z.array(fileSchema).optional(),
+  existingFileIds: z.array(z.string()).optional(),
   removedAttachments: z.array(z.string()).optional(),
   rubricGrades: z.array(z.object({
     criteriaId: z.string(),
@@ -81,7 +87,7 @@ export const assignmentRouter = createTRPCRouter({
   create: protectedProcedure
     .input(createAssignmentSchema)
     .mutation(async ({ ctx, input }) => {
-      const { classId, title, instructions, dueDate, files, maxGrade, graded, weight, sectionId, type, markSchemeId, gradingBoundaryId } = input;
+      const { classId, title, instructions, dueDate, files, existingFileIds, maxGrade, graded, weight, sectionId, type, markSchemeId, gradingBoundaryId, inProgress } = input;
 
       if (!ctx.user) {
         throw new TRPCError({
@@ -107,20 +113,24 @@ export const assignmentRouter = createTRPCRouter({
         });
       }
 
-      const rubric = await prisma.markScheme.findUnique({
-        where: { id: markSchemeId },
-        select: {
-          structured: true,
-        }
-      });
+      let computedMaxGrade = maxGrade;
+      if (markSchemeId) {
+        const rubric = await prisma.markScheme.findUnique({
+          where: { id: markSchemeId },
+          select: {
+            structured: true,
+          }
+        });
 
-      const parsedRubric = JSON.parse(rubric?.structured || "{}");
+        const parsedRubric = JSON.parse(rubric?.structured || "{}");
 
-      // Calculate max grade from rubric criteria levels
-      const computedMaxGrade = parsedRubric.criteria.reduce((acc: number, criterion: any) => {
-        const maxPoints = Math.max(...criterion.levels.map((level: any) => level.points));
-        return acc + maxPoints;
-      }, 0);
+        // Calculate max grade from rubric criteria levels
+        computedMaxGrade = parsedRubric.criteria.reduce((acc: number, criterion: any) => {
+          const maxPoints = Math.max(...criterion.levels.map((level: any) => level.points));
+          return acc + maxPoints;
+        }, 0);
+      }
+      console.log(markSchemeId, gradingBoundaryId);
 
       // Create assignment with submissions for all students
       const assignment = await prisma.assignment.create({
@@ -132,6 +142,7 @@ export const assignmentRouter = createTRPCRouter({
           graded,
           weight,
           type,
+          inProgress: inProgress || false,
           class: {
             connect: { id: classId }
           },
@@ -197,11 +208,12 @@ export const assignmentRouter = createTRPCRouter({
           }
         }
       });
+
       // Upload files if provided
       let uploadedFiles: UploadedFile[] = [];
       if (files && files.length > 0) {
         // Store files in a class and assignment specific directory
-        uploadedFiles = await uploadFiles(files, ctx.user.id, `class/${classId}/assignment/${assignment.id}`);
+        uploadedFiles = await uploadFiles(files, ctx.user.id);
       }
 
       // Update assignment with new file attachments
@@ -226,12 +238,24 @@ export const assignmentRouter = createTRPCRouter({
         });
       }
 
+      // Connect existing files if provided
+      if (existingFileIds && existingFileIds.length > 0) {
+        await prisma.assignment.update({
+          where: { id: assignment.id },
+          data: {
+            attachments: {
+              connect: existingFileIds.map(fileId => ({ id: fileId }))
+            }
+          }
+        });
+      }
+
       return assignment;
     }),
   update: protectedProcedure
     .input(updateAssignmentSchema)
     .mutation(async ({ ctx, input }) => {
-      const { id, title, instructions, dueDate, files, maxGrade, graded, weight, sectionId, type } = input;
+      const { id, title, instructions, dueDate, files, existingFileIds, maxGrade, graded, weight, sectionId, type, inProgress } = input;
 
       if (!ctx.user) {
         throw new TRPCError({
@@ -279,7 +303,7 @@ export const assignmentRouter = createTRPCRouter({
       let uploadedFiles: UploadedFile[] = [];
       if (files && files.length > 0) {
         // Store files in a class and assignment specific directory
-        uploadedFiles = await uploadFiles(files, ctx.user.id, `class/${assignment.classId}/assignment/${id}`);
+        uploadedFiles = await uploadFiles(files, ctx.user.id);
       }
 
       // Update assignment
@@ -293,6 +317,7 @@ export const assignmentRouter = createTRPCRouter({
           ...(graded !== undefined && { graded }),
           ...(weight && { weight }),
           ...(type && { type }),
+          ...(inProgress !== undefined && { inProgress }),
           ...(sectionId !== undefined && {
             section: sectionId ? {
               connect: { id: sectionId }
@@ -313,6 +338,11 @@ export const assignmentRouter = createTRPCRouter({
                   }
                 })
               }))
+            }
+          }),
+          ...(existingFileIds && existingFileIds.length > 0 && {
+            attachments: {
+              connect: existingFileIds.map(fileId => ({ id: fileId }))
             }
           }),
           ...(input.removedAttachments && input.removedAttachments.length > 0 && {
@@ -740,7 +770,7 @@ export const assignmentRouter = createTRPCRouter({
         });
       }
 
-      const { submissionId, submit, newAttachments, removedAttachments } = input;
+      const { submissionId, submit, newAttachments, existingFileIds, removedAttachments } = input;
 
       const submission = await prisma.submission.findFirst({
         where: {
@@ -837,7 +867,7 @@ export const assignmentRouter = createTRPCRouter({
       let uploadedFiles: UploadedFile[] = [];
       if (newAttachments && newAttachments.length > 0) {
         // Store files in a class and assignment specific directory
-        uploadedFiles = await uploadFiles(newAttachments, ctx.user.id, `class/${submission.assignment.classId}/assignment/${submission.assignmentId}/submission/${submission.id}`);
+        uploadedFiles = await uploadFiles(newAttachments, ctx.user.id);
       }
 
       // Update submission with new file attachments
@@ -857,6 +887,18 @@ export const assignmentRouter = createTRPCRouter({
                   }
                 })
               }))
+            }
+          }
+        });
+      }
+
+      // Connect existing files if provided
+      if (existingFileIds && existingFileIds.length > 0) {
+        await prisma.submission.update({
+          where: { id: submission.id },
+          data: {
+            attachments: {
+              connect: existingFileIds.map(fileId => ({ id: fileId }))
             }
           }
         });
@@ -1003,7 +1045,7 @@ export const assignmentRouter = createTRPCRouter({
         });
       }
 
-      const { submissionId, return: returnSubmission, gradeReceived, newAttachments, removedAttachments, rubricGrades } = input;
+      const { submissionId, return: returnSubmission, gradeReceived, newAttachments, existingFileIds, removedAttachments, rubricGrades } = input;
 
       const submission = await prisma.submission.findFirst({
         where: {
@@ -1093,7 +1135,7 @@ export const assignmentRouter = createTRPCRouter({
       let uploadedFiles: UploadedFile[] = [];
       if (newAttachments && newAttachments.length > 0) {
         // Store files in a class and assignment specific directory
-        uploadedFiles = await uploadFiles(newAttachments, ctx.user.id, `class/${submission.assignment.classId}/assignment/${submission.assignmentId}/submission/${submission.id}/annotations`);
+        uploadedFiles = await uploadFiles(newAttachments, ctx.user.id);
       }
 
       // Update submission with new file attachments
@@ -1113,6 +1155,18 @@ export const assignmentRouter = createTRPCRouter({
                   }
                 })
               }))
+            }
+          }
+        });
+      }
+
+      // Connect existing files if provided
+      if (existingFileIds && existingFileIds.length > 0) {
+        await prisma.submission.update({
+          where: { id: submission.id },
+          data: {
+            annotations: {
+              connect: existingFileIds.map(fileId => ({ id: fileId }))
             }
           }
         });
@@ -1552,7 +1606,6 @@ export const assignmentRouter = createTRPCRouter({
 
       return updatedAssignment;
     }),
-
     attachGradingBoundary: protectedTeacherProcedure
     .input(z.object({
       assignmentId: z.string(),

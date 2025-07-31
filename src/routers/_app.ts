@@ -11,6 +11,7 @@ import { eventRouter } from "./event";
 import { authRouter } from "./auth";
 import { agendaRouter } from "./agenda";
 import { fileRouter } from "./file";
+import { folderRouter } from "./folder";
 
 export const appRouter = createTRPCRouter({
   class: classRouter,
@@ -23,6 +24,7 @@ export const appRouter = createTRPCRouter({
   auth: authRouter,
   agenda: agendaRouter,
   file: fileRouter,
+  folder: folderRouter,
 });
 
 // Export type router type definition

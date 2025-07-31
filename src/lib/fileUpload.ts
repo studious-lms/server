@@ -39,22 +39,22 @@ export async function uploadFile(
     const fileExtension = file.name.split('.').pop();
     const uniqueFilename = `${uuidv4()}.${fileExtension}`;
     
-    // Construct the full path
+  //   // Construct the full path
     const filePath = directory 
       ? `${directory}/${uniqueFilename}`
       : uniqueFilename;
     
-    // Upload to Google Cloud Storage
+  //   // Upload to Google Cloud Storage
     const uploadedPath = await uploadToGCS(file.data, filePath, file.type);
     
-    // Generate and store thumbnail if supported
+  //   // Generate and store thumbnail if supported
     let thumbnailId: string | undefined;
     try {
-      // Convert base64 to buffer for thumbnail generation
+  //     // Convert base64 to buffer for thumbnail generation
       const base64Data = file.data.split(',')[1];
       const fileBuffer = Buffer.from(base64Data, 'base64');
       
-      // Generate thumbnail directly from buffer
+  //     // Generate thumbnail directly from buffer
       const thumbnailBuffer = await generateMediaThumbnail(fileBuffer, file.type);
       if (thumbnailBuffer) {
         // Store thumbnail in a thumbnails directory
@@ -65,9 +65,10 @@ export async function uploadFile(
         // Create thumbnail file record
         const thumbnailFile = await prisma.file.create({
           data: {
-            name: `${file.name}_thumb.jpg`,
+            name: `${file.name}_thumb.jpg${Math.random()}`,
             type: 'image/jpeg',
             path: thumbnailPath,
+            // path: '/dummyPath' + Math.random().toString(36).substring(2, 15),
             user: {
               connect: { id: userId }
             }
@@ -81,6 +82,8 @@ export async function uploadFile(
     }
     
     // Create file record in database
+
+    // const uploadedPath = '/dummyPath' + Math.random().toString(36).substring(2, 15);
     const fileRecord = await prisma.file.create({
       data: {
         name: file.name,
@@ -90,6 +93,11 @@ export async function uploadFile(
         user: {
           connect: { id: userId }
         },
+        ...(directory && {
+          folder: {
+            connect: {id: directory},
+          },
+        }),
         ...(thumbnailId && {
           thumbnail: {
             connect: { id: thumbnailId }
@@ -112,7 +120,8 @@ export async function uploadFile(
       path: uploadedPath,
       thumbnailId: thumbnailId
     };
-  } catch (error) {
+  }
+   catch (error) {
     console.error('Error uploading file:', error);
     throw new TRPCError({
       code: 'INTERNAL_SERVER_ERROR',

@@ -21,12 +21,14 @@ export const classRouter = createTRPCRouter({
             assignments: {
               where: {
                 dueDate: {
-                  equals: new Date(new Date().setHours(0, 0, 0, 0)),
+                  lte: new Date(new Date().setHours(23, 59, 59, 999)),
                 },
+                template: false,
               },
               select: {
                 id: true,
                 title: true,
+                type: true,
               },
             },
           },
@@ -42,41 +44,20 @@ export const classRouter = createTRPCRouter({
           include: {
             assignments: {
               where: {
-                dueDate: {
-                  equals: new Date(new Date().setHours(0, 0, 0, 0)),
+                dueDate: {  
+                  lte: new Date(new Date().setHours(23, 59, 59, 999)),
                 },
+                template: false,
               },
               select: {
                 id: true,
                 title: true,
+                type: true,
               },
             },
           },
         }),
       ]);
-
-      const adminClasses = await prisma.class.findMany({
-        where: {
-          teachers: {
-            some: {
-              id: ctx.user?.id,
-            },
-          },
-        },
-        include: {
-          assignments: {
-            where: {
-              dueDate: {
-                equals: new Date(new Date().setHours(0, 0, 0, 0)),
-              },
-            },
-            select: {
-              id: true,
-              title: true,
-            },
-          },
-        },
-      });
 
       return {
         teacherInClass: teacherClasses.map(cls => ({
@@ -85,6 +66,7 @@ export const classRouter = createTRPCRouter({
           section: cls.section,
           subject: cls.subject,
           dueToday: cls.assignments,
+          assignments: cls.assignments,
           color: cls.color,
         })),
         studentInClass: studentClasses.map(cls => ({
@@ -93,14 +75,7 @@ export const classRouter = createTRPCRouter({
           section: cls.section,
           subject: cls.subject,
           dueToday: cls.assignments,
-          color: cls.color,
-        })),
-        adminInClass: adminClasses.map(cls => ({
-          id: cls.id,
-          name: cls.name,
-          section: cls.section,
-          subject: cls.subject,
-          dueToday: cls.assignments,
+          assignments: cls.assignments,
           color: cls.color,
         })),
       };
@@ -155,7 +130,9 @@ export const classRouter = createTRPCRouter({
               weight: true,
               graded: true,
               maxGrade: true,
-              instructions: true,      
+              instructions: true,
+              inProgress: true,
+              template: false,
               section: {
                 select: {
                   id: true,
@@ -749,5 +726,319 @@ export const classRouter = createTRPCRouter({
         });
 
         return gradingBoundary;
+      }),
+      getSyllabus: protectedClassMemberProcedure
+      .input(z.object({
+        classId: z.string(),
+      }))
+      .query(async ({input}) => {
+        const {classId} = input;
+
+        const syllabus = (await prisma.class.findUnique({
+          where: {
+            id: classId,
+          },
+        }))?.syllabus;
+
+        const markSchemes = await prisma.markScheme.findMany({
+          where: {
+            classId,
+          }
+        });
+
+        const gradingBoundaries = await prisma.gradingBoundary.findMany({
+          where: {
+            classId,
+          }
+        });
+
+        return {syllabus, gradingBoundaries, markSchemes};
+      }),
+    updateSyllabus: protectedTeacherProcedure
+      .input(z.object({
+          classId: z.string(),
+          contents: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        const { contents, classId } = input;
+
+        if (!contents) throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: "Missing key contents",
+        });
+
+        const updated = await prisma.class.update({
+          where: {
+            id: classId
+          },
+          data: {
+            syllabus: contents,
+          }
+        });
+
+        return updated;
+      }),
+    // Lab Management Endpoints (Assignment-based)
+    listLabDrafts: protectedTeacherProcedure
+      .input(z.object({
+        classId: z.string(),
+      }))
+      .query(async ({ ctx, input }) => {
+        const { classId } = input;
+
+        const labDrafts = await prisma.assignment.findMany({
+          where: {
+            classId: classId,
+            teacherId: ctx.user?.id,
+            inProgress: true,
+          },
+          orderBy: {
+            modifiedAt: 'desc',
+          },
+        });
+
+        return labDrafts;
+      }),
+    createLabDraft: protectedTeacherProcedure
+      .input(z.object({
+        classId: z.string(),
+        title: z.string(),
+        type: z.enum(['LAB', 'HOMEWORK', 'QUIZ', 'TEST', 'PROJECT', 'ESSAY', 'DISCUSSION', 'PRESENTATION', 'OTHER']),
+        instructions: z.string(),
+        dueDate: z.date().optional(),
+        maxGrade: z.number().optional(),
+        weight: z.number().optional(),
+        graded: z.boolean().optional(),
+        sectionId: z.string().optional(),
+        markSchemeId: z.string().optional(),
+        gradingBoundaryId: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { classId, ...draftData } = input;
+
+        const labDraft = await prisma.assignment.create({
+          data: {
+            classId: classId,
+            teacherId: ctx.user?.id!,
+            inProgress: true,
+            graded: draftData.graded ?? false,
+            maxGrade: draftData.maxGrade ?? 0,
+            weight: draftData.weight ?? 1,
+            dueDate: draftData.dueDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // Default 1 week from now
+            title: draftData.title,
+            instructions: draftData.instructions,
+            type: draftData.type,
+            ...(draftData.sectionId && { sectionId: draftData.sectionId }),
+            ...(draftData.markSchemeId && { markSchemeId: draftData.markSchemeId }),
+            ...(draftData.gradingBoundaryId && { gradingBoundaryId: draftData.gradingBoundaryId }),
+          },
+        });
+
+        return labDraft;
+      }),
+    updateLabDraft: protectedTeacherProcedure
+      .input(z.object({
+        classId: z.string(),
+        draftId: z.string(),
+        title: z.string().optional(),
+        instructions: z.string().optional(),
+        dueDate: z.date().optional(),
+        maxGrade: z.number().optional(),
+        weight: z.number().optional(),
+        graded: z.boolean().optional(),
+        sectionId: z.string().optional(),
+        markSchemeId: z.string().optional(),
+        gradingBoundaryId: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { classId, draftId, ...updateData } = input;
+
+        const labDraft = await prisma.assignment.update({
+          where: {
+            id: draftId,
+            classId: classId,
+            teacherId: ctx.user?.id!,
+            inProgress: true,
+          },
+          data: {
+            ...(updateData.title && { title: updateData.title }),
+            ...(updateData.instructions && { instructions: updateData.instructions }),
+            ...(updateData.dueDate && { dueDate: updateData.dueDate }),
+            ...(updateData.maxGrade !== undefined && { maxGrade: updateData.maxGrade }),
+            ...(updateData.weight !== undefined && { weight: updateData.weight }),
+            ...(updateData.graded !== undefined && { graded: updateData.graded }),
+            ...(updateData.sectionId !== undefined && { sectionId: updateData.sectionId }),
+            ...(updateData.markSchemeId !== undefined && { markSchemeId: updateData.markSchemeId }),
+            ...(updateData.gradingBoundaryId !== undefined && { gradingBoundaryId: updateData.gradingBoundaryId }),
+            modifiedAt: new Date(),
+          },
+        });
+
+        return labDraft;
+      }),
+    deleteLabDraft: protectedTeacherProcedure
+      .input(z.object({
+        classId: z.string(),
+        draftId: z.string(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { classId, draftId } = input;
+
+        const labDraft = await prisma.assignment.delete({
+          where: {
+            id: draftId,
+            classId: classId,
+            teacherId: ctx.user?.id!,
+            inProgress: true,
+          },
+        });
+
+        return labDraft;
+      }),
+    publishLabDraft: protectedTeacherProcedure
+      .input(z.object({
+        classId: z.string(),
+        draftId: z.string(),
+        dueDate: z.date().optional(),
+        maxGrade: z.number().optional(),
+        weight: z.number().optional(),
+        graded: z.boolean().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { classId, draftId, ...publishData } = input;
+
+        // Get the lab draft
+        const labDraft = await prisma.assignment.findUnique({
+          where: {
+            id: draftId,
+            classId: classId,
+            teacherId: ctx.user?.id!,
+            inProgress: true,
+          },
+        });
+
+        if (!labDraft) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Lab draft not found',
+          });
+        }
+
+        // Publish the draft by updating it to not be in progress
+        const publishedAssignment = await prisma.assignment.update({
+          where: { id: draftId },
+          data: {
+            inProgress: false,
+            dueDate: publishData.dueDate || labDraft.dueDate,
+            maxGrade: publishData.maxGrade || labDraft.maxGrade || 100,
+            weight: publishData.weight || labDraft.weight || 1,
+            graded: publishData.graded !== undefined ? publishData.graded : true,
+            modifiedAt: new Date(),
+          },
+        });
+
+        return publishedAssignment;
+      }),
+    getFiles: protectedClassMemberProcedure
+      .input(z.object({
+        classId: z.string(),
+      }))
+      .query(async ({ ctx, input }) => {
+        const { classId } = input;
+
+        // Get all assignments with their files and submissions
+        const assignments = await prisma.assignment.findMany({
+          where: {
+            classId: classId,
+          },
+          include: {
+            attachments: {
+              select: {
+                id: true,
+                name: true,
+                type: true,
+                size: true,
+                path: true,
+                thumbnailId: true,
+                uploadedAt: true,
+                user: {
+                  select: {
+                    id: true,
+                    username: true,
+                  },
+                },
+              },
+            },
+            submissions: {
+              include: {
+                attachments: {
+                  select: {
+                    id: true,
+                    name: true,
+                    type: true,
+                    size: true,
+                    path: true,
+                    thumbnailId: true,
+                    uploadedAt: true,
+                    user: {
+                      select: {
+                        id: true,
+                        username: true,
+                      },
+                    },
+                  },
+                },
+                annotations: {
+                  select: {
+                    id: true,
+                    name: true,
+                    type: true,
+                    size: true,
+                    path: true,
+                    thumbnailId: true,
+                    uploadedAt: true,
+                    user: {
+                      select: {
+                        id: true,
+                        username: true,
+                      },
+                    },
+                  },
+                },
+                student: {
+                  select: {
+                    id: true,
+                    username: true,
+                  },
+                },
+              },
+            },
+            teacher: {
+              select: {
+                id: true,
+                username: true,
+              },
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+        });
+
+        // Organize files by assignment structure
+        const organizedFiles = assignments.map(assignment => ({
+          id: assignment.id,
+          title: assignment.title,
+          teacher: assignment.teacher,
+          teacherAttachments: assignment.attachments,
+          students: assignment.submissions.map(submission => ({
+            id: submission.student.id,
+            username: submission.student.username,
+            attachments: submission.attachments,
+            annotations: submission.annotations,
+          })),
+        }));
+
+        return organizedFiles;
       }),
 });

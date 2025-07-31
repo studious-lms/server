@@ -10,10 +10,11 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
-
+  // provider = "postgresql"
+  // url      = env("DATABASE_URL")
+  // directUrl = env("DIRECT_URL")
+  provider = "sqlite"
+  url = "file:./dev.db"
 }
 
 enum AssignmentType {
@@ -28,6 +29,14 @@ enum AssignmentType {
   OTHER
 }
 
+model School {
+  id          String      @id @default(uuid())
+  name        String
+  logo        File        @relation(references: [id], fields: [logoId])
+  logoId      String
+
+  members     User[]
+}
 
 model User {
   id           String      @id @default(uuid())
@@ -52,6 +61,10 @@ model User {
   presentAttendance  Attendance[] @relation("PresentAttendance")
   lateAttendance    Attendance[] @relation("LateAttendance")
   absentAttendance  Attendance[] @relation("AbsentAttendance")
+
+  school School? @relation(fields: [schoolId], references: [id])
+  schoolId String?
+
 }
 
 model UserProfile {
@@ -67,6 +80,7 @@ model Class {
   subject       String
   color         String?        @default("#3B82F6")
   section       String
+  syllabus      String?
   announcements Announcement[]
   assignments   Assignment[]
   attendance    Attendance[]
@@ -77,6 +91,8 @@ model Class {
   teachers      User[]         @relation("UserTeacherToClass")
   markSchemes   MarkScheme[] @relation("ClassToMarkScheme")
   gradingBoundaries GradingBoundary[] @relation("ClassToGradingBoundary")
+  draftFiles File[] @relation("ClassDraftFiles")
+  classFiles Folder? @relation("ClassFiles")
 }
 
 model MarkScheme {
@@ -93,6 +109,17 @@ model GradingBoundary {
   class Class[] @relation("ClassToGradingBoundary")
   structured String
   assignments Assignment[]
+}
+
+model Folder {
+  id String @id @default(uuid())
+  name String
+  files File[] @relation("FolderFiles")
+  childFolders Folder[] @relation("ParentChildFolders")
+  parentFolder Folder? @relation("ParentChildFolders", fields: [parentFolderId], references: [id])
+  parentFolderId String?
+  class Class? @relation("ClassFiles", fields: [classId], references: [id])
+  classId String? @unique
 }
 
 model File {
@@ -118,6 +145,14 @@ model File {
 
   annotations Submission? @relation("SubmissionAnnotations", fields: [annotationId], references: [id], onDelete: Cascade)
   annotationId String?
+
+  classDraft Class? @relation("ClassDraftFiles", fields: [classDraftId], references: [id], onDelete: Cascade)
+  classDraftId String?
+
+  folder Folder? @relation("FolderFiles", fields: [folderId], references: [id], onDelete: Cascade)
+  folderId String?
+
+  schools      School[]
 }
 
 model Assignment {
@@ -139,6 +174,8 @@ model Assignment {
   maxGrade      Int?          @default(0)
   weight        Float         @default(1)
   type          AssignmentType @default(HOMEWORK)
+  inProgress    Boolean        @default(false)
+  template      Boolean        @default(false)
   eventAttached Event?        @relation(fields: [eventId], references: [id], onDelete: NoAction)
   eventId       String?
   markScheme    MarkScheme? @relation(fields: [markSchemeId], references: [id], onDelete: Cascade)
@@ -146,6 +183,8 @@ model Assignment {
   gradingBoundary GradingBoundary? @relation(fields: [gradingBoundaryId], references: [id], onDelete: Cascade)
   gradingBoundaryId String?
 }
+
+
 
 model Announcement {
   id      String @id @default(uuid())

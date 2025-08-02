@@ -158,6 +158,10 @@ export const assignmentRouter = createTRPCRouter({
         });
       }
 
+      if (!markSchemeId) {
+        throw new Error("markSchemeId is required");
+      }
+
       const rubric = await prisma.markScheme.findUnique({
         where: { id: markSchemeId },
         select: {

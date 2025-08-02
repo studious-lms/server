@@ -1,8 +1,11 @@
-import { z } from "zod";
-import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
-import { prisma } from "../lib/prisma";
 import { parseISO } from "date-fns";
+import redis from "src/lib/redis";
+import { z } from "zod";
+import { prisma } from "../lib/prisma";
+import { createTRPCRouter, protectedProcedure } from "../trpc";
+
+const cacheKey = "event:all";
 
 const eventSchema = z.object({
   name: z.string().optional(),
@@ -16,15 +19,24 @@ const eventSchema = z.object({
 
 export const eventRouter = createTRPCRouter({
   get: protectedProcedure
-    .input(z.object({
-      id: z.string(),
-    }))
+    .input(
+      z.object({
+        id: z.string(),
+      })
+    )
     .query(async ({ ctx, input }) => {
       if (!ctx.user) {
         throw new TRPCError({
           code: "UNAUTHORIZED",
           message: "You must be logged in to get an event",
         });
+      }
+
+      // Try getting data from Redis
+      const cached = await redis.get(cacheKey);
+      console.log("class Cache hit:", cached);
+      if (cached) {
+        return JSON.parse(cached);
       }
 
       const event = await prisma.event.findUnique({
@@ -47,22 +59,22 @@ export const eventRouter = createTRPCRouter({
                   id: true,
                   name: true,
                   type: true,
-                }
+                },
               },
               section: {
                 select: {
                   id: true,
-                  name: true
-                }
+                  name: true,
+                },
               },
               teacher: {
                 select: {
                   id: true,
-                  username: true
-                }
-              }
-            }
-          }
+                  username: true,
+                },
+              },
+            },
+          },
         },
       });
 
@@ -80,6 +92,11 @@ export const eventRouter = createTRPCRouter({
         });
       }
 
+      // Store in Redis (set cache for 10 mins)
+      await redis.set(cacheKey, JSON.stringify({ event }), {
+        EX: 600, // 600 seconds = 10 minutes
+      });
+
       return { event };
     }),
 
@@ -92,6 +109,8 @@ export const eventRouter = createTRPCRouter({
           message: "You must be logged in to create an event",
         });
       }
+
+      await redis.del(cacheKey);
 
       // If classId is provided, check if user is a teacher of the class
       if (input.classId) {
@@ -138,20 +157,22 @@ export const eventRouter = createTRPCRouter({
           class: {
             select: {
               id: true,
-              name: true
-            }
+              name: true,
+            },
           },
-        }
+        },
       });
 
       return { event };
     }),
 
   update: protectedProcedure
-    .input(z.object({
-      id: z.string(),
-      data: eventSchema,
-    }))
+    .input(
+      z.object({
+        id: z.string(),
+        data: eventSchema,
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user) {
         throw new TRPCError({
@@ -159,6 +180,8 @@ export const eventRouter = createTRPCRouter({
           message: "You must be logged in to update an event",
         });
       }
+
+      await redis.del(cacheKey);
 
       const event = await prisma.event.findUnique({
         where: { id: input.id },
@@ -195,9 +218,11 @@ export const eventRouter = createTRPCRouter({
     }),
 
   delete: protectedProcedure
-    .input(z.object({
-      id: z.string(),
-    }))
+    .input(
+      z.object({
+        id: z.string(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user) {
         throw new TRPCError({
@@ -205,6 +230,8 @@ export const eventRouter = createTRPCRouter({
           message: "You must be logged in to delete an event",
         });
       }
+
+      await redis.del(cacheKey);
 
       const event = await prisma.event.findUnique({
         where: { id: input.id },
@@ -232,10 +259,12 @@ export const eventRouter = createTRPCRouter({
     }),
 
   attachAssignment: protectedProcedure
-    .input(z.object({
-      eventId: z.string(),
-      assignmentId: z.string(),
-    }))
+    .input(
+      z.object({
+        eventId: z.string(),
+        assignmentId: z.string(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user || !ctx.user.id) {
         throw new TRPCError({
@@ -251,11 +280,11 @@ export const eventRouter = createTRPCRouter({
           class: {
             include: {
               teachers: {
-                select: { id: true }
-              }
-            }
-          }
-        }
+                select: { id: true },
+              },
+            },
+          },
+        },
       });
 
       if (!event) {
@@ -266,8 +295,10 @@ export const eventRouter = createTRPCRouter({
       }
 
       // Check if user is the event owner or a teacher of the class
-      if (event.userId !== ctx.user.id && 
-          !event.class?.teachers.some(teacher => teacher.id === ctx.user!.id)) {
+      if (
+        event.userId !== ctx.user.id &&
+        !event.class?.teachers.some((teacher) => teacher.id === ctx.user!.id)
+      ) {
         throw new TRPCError({
           code: "UNAUTHORIZED",
           message: "You are not authorized to modify this event",
@@ -281,11 +312,11 @@ export const eventRouter = createTRPCRouter({
           class: {
             include: {
               teachers: {
-                select: { id: true }
-              }
-            }
-          }
-        }
+                select: { id: true },
+              },
+            },
+          },
+        },
       });
 
       if (!assignment) {
@@ -296,7 +327,11 @@ export const eventRouter = createTRPCRouter({
       }
 
       // Check if user is a teacher of the assignment's class
-      if (!assignment.class.teachers.some(teacher => teacher.id === ctx.user!.id)) {
+      if (
+        !assignment.class.teachers.some(
+          (teacher) => teacher.id === ctx.user!.id
+        )
+      ) {
         throw new TRPCError({
           code: "UNAUTHORIZED",
           message: "You are not authorized to modify this assignment",
@@ -316,8 +351,8 @@ export const eventRouter = createTRPCRouter({
         where: { id: input.assignmentId },
         data: {
           eventAttached: {
-            connect: { id: input.eventId }
-          }
+            connect: { id: input.eventId },
+          },
         },
         include: {
           attachments: {
@@ -325,31 +360,33 @@ export const eventRouter = createTRPCRouter({
               id: true,
               name: true,
               type: true,
-            }
+            },
           },
           section: {
             select: {
               id: true,
-              name: true
-            }
+              name: true,
+            },
           },
           teacher: {
             select: {
               id: true,
-              username: true
-            }
-          }
-        }
+              username: true,
+            },
+          },
+        },
       });
 
       return { assignment: updatedAssignment };
     }),
 
   detachAssignment: protectedProcedure
-    .input(z.object({
-      eventId: z.string(),
-      assignmentId: z.string(),
-    }))
+    .input(
+      z.object({
+        eventId: z.string(),
+        assignmentId: z.string(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user) {
         throw new TRPCError({
@@ -365,11 +402,11 @@ export const eventRouter = createTRPCRouter({
           class: {
             include: {
               teachers: {
-                select: { id: true }
-              }
-            }
-          }
-        }
+                select: { id: true },
+              },
+            },
+          },
+        },
       });
 
       if (!event) {
@@ -380,8 +417,10 @@ export const eventRouter = createTRPCRouter({
       }
 
       // Check if user is the event owner or a teacher of the class
-      if (event.userId !== ctx.user.id && 
-          !event.class?.teachers.some(teacher => teacher.id === ctx.user!.id)) {
+      if (
+        event.userId !== ctx.user.id &&
+        !event.class?.teachers.some((teacher) => teacher.id === ctx.user!.id)
+      ) {
         throw new TRPCError({
           code: "UNAUTHORIZED",
           message: "You are not authorized to modify this event",
@@ -393,8 +432,8 @@ export const eventRouter = createTRPCRouter({
         where: { id: input.assignmentId },
         data: {
           eventAttached: {
-            disconnect: true
-          }
+            disconnect: true,
+          },
         },
         include: {
           attachments: {
@@ -402,30 +441,32 @@ export const eventRouter = createTRPCRouter({
               id: true,
               name: true,
               type: true,
-            }
+            },
           },
           section: {
             select: {
               id: true,
-              name: true
-            }
+              name: true,
+            },
           },
           teacher: {
             select: {
               id: true,
-              username: true
-            }
-          }
-        }
+              username: true,
+            },
+          },
+        },
       });
 
       return { assignment: updatedAssignment };
     }),
 
   getAvailableAssignments: protectedProcedure
-    .input(z.object({
-      eventId: z.string(),
-    }))
+    .input(
+      z.object({
+        eventId: z.string(),
+      })
+    )
     .query(async ({ ctx, input }) => {
       if (!ctx.user) {
         throw new TRPCError({
@@ -441,11 +482,11 @@ export const eventRouter = createTRPCRouter({
           class: {
             include: {
               teachers: {
-                select: { id: true }
-              }
-            }
-          }
-        }
+                select: { id: true },
+              },
+            },
+          },
+        },
       });
 
       if (!event || !event.classId) {
@@ -456,8 +497,10 @@ export const eventRouter = createTRPCRouter({
       }
 
       // Check if user is authorized to access this event/class
-      if (event.userId !== ctx.user.id && 
-          !event.class?.teachers.some(teacher => teacher.id === ctx.user!.id)) {
+      if (
+        event.userId !== ctx.user.id &&
+        !event.class?.teachers.some((teacher) => teacher.id === ctx.user!.id)
+      ) {
         throw new TRPCError({
           code: "UNAUTHORIZED",
           message: "You are not authorized to access this event",
@@ -482,28 +525,28 @@ export const eventRouter = createTRPCRouter({
           section: {
             select: {
               id: true,
-              name: true
-            }
+              name: true,
+            },
           },
           attachments: {
             select: {
               id: true,
               name: true,
               type: true,
-            }
+            },
           },
           teacher: {
             select: {
               id: true,
-              username: true
-            }
-          }
+              username: true,
+            },
+          },
         },
         orderBy: {
-          createdAt: 'desc'
-        }
+          createdAt: "desc",
+        },
       });
 
       return { assignments };
     }),
-}); 
+});

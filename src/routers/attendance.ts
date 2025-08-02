@@ -1,7 +1,8 @@
-import { z } from "zod";
-import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
+import redis from "src/lib/redis";
+import { z } from "zod";
 import { prisma } from "../lib/prisma";
+import { createTRPCRouter, protectedProcedure } from "../trpc";
 
 const attendanceSchema = z.object({
   eventId: z.string().optional(),
@@ -12,16 +13,27 @@ const attendanceSchema = z.object({
 
 export const attendanceRouter = createTRPCRouter({
   get: protectedProcedure
-    .input(z.object({
-      classId: z.string(),
-      eventId: z.string().optional(),
-    }))
+    .input(
+      z.object({
+        classId: z.string(),
+        eventId: z.string().optional(),
+      })
+    )
     .query(async ({ ctx, input }) => {
       if (!ctx.user) {
         throw new TRPCError({
           code: "UNAUTHORIZED",
           message: "You must be logged in to view attendance",
         });
+      }
+
+      const cacheKey = `attendance:${input.classId}:${input.eventId || "all"}`;
+
+      // Try getting data from Redis
+      const cached = await redis.get(cacheKey);
+      console.log("class Cache hit:", cached);
+      if (cached) {
+        return JSON.parse(cached);
       }
 
       // Check if user is a teacher or student of the class
@@ -67,14 +79,14 @@ export const attendanceRouter = createTRPCRouter({
           classId: input.classId,
         },
       });
-      
+
       for (const event of events) {
         const attendance = await prisma.attendance.findFirst({
           where: {
             eventId: event.id,
           },
         });
-        
+
         if (!attendance) {
           await prisma.attendance.create({
             data: {
@@ -89,13 +101,14 @@ export const attendanceRouter = createTRPCRouter({
                 },
               },
               present: {
-                connect: classData.students.map(student => ({ id: student.id })),
+                connect: classData.students.map((student) => ({
+                  id: student.id,
+                })),
               },
             },
           });
         }
       }
-
 
       const attendance = await prisma.attendance.findMany({
         where: {
@@ -137,15 +150,22 @@ export const attendanceRouter = createTRPCRouter({
         },
       });
 
+      // Store in Redis (set cache for 10 mins)
+      await redis.set(cacheKey, JSON.stringify(attendance), {
+        EX: 600, // 600 seconds = 10 minutes
+      });
+
       return attendance;
     }),
 
   update: protectedProcedure
-    .input(z.object({
-      classId: z.string(),
-      eventId: z.string().optional(),
-      attendance: attendanceSchema,
-    }))
+    .input(
+      z.object({
+        classId: z.string(),
+        eventId: z.string().optional(),
+        attendance: attendanceSchema,
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user) {
         throw new TRPCError({
@@ -153,6 +173,8 @@ export const attendanceRouter = createTRPCRouter({
           message: "You must be logged in to update attendance",
         });
       }
+
+      await redis.del(`attendance:${input.classId}:${input.eventId || "all"}`);
 
       // Check if user is a teacher of the class
       const classData = await prisma.class.findUnique({
@@ -189,13 +211,19 @@ export const attendanceRouter = createTRPCRouter({
             eventId: input.eventId,
             date: new Date(),
             present: {
-              connect: input.attendance.present.map(student => ({ id: student.id })),
+              connect: input.attendance.present.map((student) => ({
+                id: student.id,
+              })),
             },
             late: {
-              connect: input.attendance.late.map(student => ({ id: student.id })),
+              connect: input.attendance.late.map((student) => ({
+                id: student.id,
+              })),
             },
             absent: {
-              connect: input.attendance.absent.map(student => ({ id: student.id })),
+              connect: input.attendance.absent.map((student) => ({
+                id: student.id,
+              })),
             },
           },
           include: {
@@ -239,13 +267,15 @@ export const attendanceRouter = createTRPCRouter({
         },
         data: {
           present: {
-            set: input.attendance.present.map(student => ({ id: student.id })),
+            set: input.attendance.present.map((student) => ({
+              id: student.id,
+            })),
           },
           late: {
-            set: input.attendance.late.map(student => ({ id: student.id })),
+            set: input.attendance.late.map((student) => ({ id: student.id })),
           },
           absent: {
-            set: input.attendance.absent.map(student => ({ id: student.id })),
+            set: input.attendance.absent.map((student) => ({ id: student.id })),
           },
         },
         include: {
@@ -281,4 +311,4 @@ export const attendanceRouter = createTRPCRouter({
 
       return attendance;
     }),
-}); 
+});

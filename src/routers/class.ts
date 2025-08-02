@@ -1,61 +1,30 @@
-import { z } from "zod";
-import { createTRPCRouter, protectedProcedure, protectedTeacherProcedure, protectedClassMemberProcedure } from "../trpc";
-import { prisma } from "../lib/prisma";
 import { TRPCError } from "@trpc/server";
+import { z } from "zod";
+import { prisma } from "../lib/prisma";
+import redis from "../lib/redis";
+import {
+  createTRPCRouter,
+  protectedClassMemberProcedure,
+  protectedProcedure,
+  protectedTeacherProcedure,
+} from "../trpc";
 import { generateInviteCode } from "../utils/generateInviteCode";
 
-export const classRouter = createTRPCRouter({
-  getAll: protectedProcedure
-  
-    .query(async ({ ctx }) => {
-      const [teacherClasses, studentClasses] = await Promise.all([
-        prisma.class.findMany({
-          where: {
-              teachers: {
-                some: {
-                  id: ctx.user?.id,
-              },
-            },
-          },
-          include: {
-            assignments: {
-              where: {
-                dueDate: {
-                  equals: new Date(new Date().setHours(0, 0, 0, 0)),
-                },
-              },
-              select: {
-                id: true,
-                title: true,
-              },
-            },
-          },
-        }),
-        prisma.class.findMany({
-          where: {
-            students: {
-              some: {
-                id: ctx.user?.id,
-              },
-            },
-          },
-          include: {
-            assignments: {
-              where: {
-                dueDate: {
-                  equals: new Date(new Date().setHours(0, 0, 0, 0)),
-                },
-              },
-              select: {
-                id: true,
-                title: true,
-              },
-            },
-          },
-        }),
-      ]);
+const CLASS_CACHE_KEY = "classes:all";
 
-      const adminClasses = await prisma.class.findMany({
+export const classRouter = createTRPCRouter({
+  getAll: protectedProcedure.query(async ({ ctx }) => {
+    const cacheKey = "classes:all";
+
+    // Try getting data from Redis
+    const cached = await redis.get(cacheKey);
+    console.log("class Cache hit:", cached);
+    if (cached) {
+      return JSON.parse(cached);
+    }
+
+    const [teacherClasses, studentClasses] = await Promise.all([
+      prisma.class.findMany({
         where: {
           teachers: {
             some: {
@@ -76,41 +45,105 @@ export const classRouter = createTRPCRouter({
             },
           },
         },
-      });
+      }),
+      prisma.class.findMany({
+        where: {
+          students: {
+            some: {
+              id: ctx.user?.id,
+            },
+          },
+        },
+        include: {
+          assignments: {
+            where: {
+              dueDate: {
+                equals: new Date(new Date().setHours(0, 0, 0, 0)),
+              },
+            },
+            select: {
+              id: true,
+              title: true,
+            },
+          },
+        },
+      }),
+    ]);
 
-      return {
-        teacherInClass: teacherClasses.map(cls => ({
-          id: cls.id,
-          name: cls.name,
-          section: cls.section,
-          subject: cls.subject,
-          dueToday: cls.assignments,
-          color: cls.color,
-        })),
-        studentInClass: studentClasses.map(cls => ({
-          id: cls.id,
-          name: cls.name,
-          section: cls.section,
-          subject: cls.subject,
-          dueToday: cls.assignments,
-          color: cls.color,
-        })),
-        adminInClass: adminClasses.map(cls => ({
-          id: cls.id,
-          name: cls.name,
-          section: cls.section,
-          subject: cls.subject,
-          dueToday: cls.assignments,
-          color: cls.color,
-        })),
-      };
-    }),
+    const adminClasses = await prisma.class.findMany({
+      where: {
+        teachers: {
+          some: {
+            id: ctx.user?.id,
+          },
+        },
+      },
+      include: {
+        assignments: {
+          where: {
+            dueDate: {
+              equals: new Date(new Date().setHours(0, 0, 0, 0)),
+            },
+          },
+          select: {
+            id: true,
+            title: true,
+          },
+        },
+      },
+    });
+
+    const data = {
+      teacherInClass: teacherClasses.map((cls) => ({
+        id: cls.id,
+        name: cls.name,
+        section: cls.section,
+        subject: cls.subject,
+        dueToday: cls.assignments,
+        color: cls.color,
+      })),
+      studentInClass: studentClasses.map((cls) => ({
+        id: cls.id,
+        name: cls.name,
+        section: cls.section,
+        subject: cls.subject,
+        dueToday: cls.assignments,
+        color: cls.color,
+      })),
+      adminInClass: adminClasses.map((cls) => ({
+        id: cls.id,
+        name: cls.name,
+        section: cls.section,
+        subject: cls.subject,
+        dueToday: cls.assignments,
+        color: cls.color,
+      })),
+    };
+
+    // Store in Redis (set cache for 10 mins)
+    await redis.set(cacheKey, JSON.stringify(data), {
+      EX: 600, // 600 seconds = 10 minutes
+    });
+
+    return data;
+  }),
   get: protectedProcedure
-    .input(z.object({
-      classId: z.string(),
-    }))
+    .input(
+      z.object({
+        classId: z.string(),
+      })
+    )
     .query(async ({ ctx, input }) => {
       const { classId } = input;
+
+      const cacheKey = `classes:${classId}`;
+
+      // Try getting data from Redis
+      const cached = await redis.get(cacheKey);
+      console.log(`class ${classId} Cache hit:`, cached);
+      if (cached) {
+        return JSON.parse(cached);
+      }
 
       const classData = await prisma.class.findUnique({
         where: {
@@ -131,7 +164,7 @@ export const classRouter = createTRPCRouter({
           },
           announcements: {
             orderBy: {
-              createdAt: 'desc',
+              createdAt: "desc",
             },
             select: {
               id: true,
@@ -155,7 +188,7 @@ export const classRouter = createTRPCRouter({
               weight: true,
               graded: true,
               maxGrade: true,
-              instructions: true,      
+              instructions: true,
               section: {
                 select: {
                   id: true,
@@ -198,32 +231,48 @@ export const classRouter = createTRPCRouter({
       });
 
       if (!classData) {
-        throw new Error('Class not found');
+        throw new Error("Class not found");
       }
 
-      return {
+      const data = {
         class: {
           ...classData,
-          assignments: classData.assignments.map(assignment => ({
+          assignments: classData.assignments.map((assignment) => ({
             ...assignment,
             late: assignment.dueDate < new Date(),
-            submitted: assignment.submissions.some(submission => submission.studentId === ctx.user?.id),
-            returned: assignment.submissions.some(submission => submission.studentId === ctx.user?.id && submission.returned),
+            submitted: assignment.submissions.some(
+              (submission) => submission.studentId === ctx.user?.id
+            ),
+            returned: assignment.submissions.some(
+              (submission) =>
+                submission.studentId === ctx.user?.id && submission.returned
+            ),
           })),
           sections,
         },
       };
+
+      // Store in Redis (set cache for 10 mins)
+      await redis.set(cacheKey, JSON.stringify(data), {
+        EX: 600, // 600 seconds = 10 minutes
+      });
+
+      return data;
     }),
   update: protectedTeacherProcedure
-    .input(z.object({
-      classId: z.string(),
-      name: z.string().optional(),
-      section: z.string().optional(),
-      subject: z.string().optional(),
-    }))
+    .input(
+      z.object({
+        classId: z.string(),
+        name: z.string().optional(),
+        section: z.string().optional(),
+        subject: z.string().optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const { classId, ...updateData } = input;
-      
+
+      await redis.del(CLASS_CACHE_KEY);
+
       const updatedClass = await prisma.class.update({
         where: {
           id: classId,
@@ -234,24 +283,28 @@ export const classRouter = createTRPCRouter({
           name: true,
           section: true,
           subject: true,
-        }
+        },
       });
 
       return {
         updatedClass,
-      }
+      };
     }),
   create: protectedProcedure
-    .input(z.object({
-      students: z.array(z.string()).optional(),
-      teachers: z.array(z.string()).optional(),
-      name: z.string(),
-      section: z.string(),
-      subject: z.string(),
-    }))
+    .input(
+      z.object({
+        students: z.array(z.string()).optional(),
+        teachers: z.array(z.string()).optional(),
+        name: z.string(),
+        section: z.string(),
+        subject: z.string(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const { students, teachers, name, section, subject } = input;
-      
+
+      await redis.del(CLASS_CACHE_KEY);
+
       if (teachers && teachers.length > 0 && students && students.length > 0) {
         const newClass = await prisma.class.create({
           data: {
@@ -259,10 +312,10 @@ export const classRouter = createTRPCRouter({
             section,
             subject,
             teachers: {
-              connect: teachers.map(teacher => ({ id: teacher })),
+              connect: teachers.map((teacher) => ({ id: teacher })),
             },
             students: {
-              connect: students.map(student => ({ id: student })),
+              connect: students.map((student) => ({ id: student })),
             },
           },
           include: {
@@ -285,15 +338,19 @@ export const classRouter = createTRPCRouter({
           },
         },
       });
-  
+
       return newClass;
     }),
   delete: protectedTeacherProcedure
-    .input(z.object({
-      classId: z.string(),
-      id: z.string(),
-    }))
+    .input(
+      z.object({
+        classId: z.string(),
+        id: z.string(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
+      await redis.del(CLASS_CACHE_KEY);
+
       // Verify user is the teacher of this class
       const classToDelete = await prisma.class.findFirst({
         where: {
@@ -302,7 +359,9 @@ export const classRouter = createTRPCRouter({
       });
 
       if (!classToDelete) {
-        throw new Error("Class not found or you don't have permission to delete it");
+        throw new Error(
+          "Class not found or you don't have permission to delete it"
+        );
       }
 
       await prisma.class.delete({
@@ -314,16 +373,20 @@ export const classRouter = createTRPCRouter({
       return {
         deletedClass: {
           id: input.id,
-        }
-      }
+        },
+      };
     }),
   addStudent: protectedTeacherProcedure
-    .input(z.object({
-      classId: z.string(),
-      studentId: z.string(),
-    }))
+    .input(
+      z.object({
+        classId: z.string(),
+        studentId: z.string(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const { classId, studentId } = input;
+
+      await redis.del(CLASS_CACHE_KEY);
 
       const student = await prisma.user.findUnique({
         where: {
@@ -351,22 +414,26 @@ export const classRouter = createTRPCRouter({
           name: true,
           section: true,
           subject: true,
-        }
+        },
       });
 
       return {
         updatedClass,
         newStudent: student,
-      }
+      };
     }),
   changeRole: protectedTeacherProcedure
-    .input(z.object({
-      classId: z.string(),
-      userId: z.string(),
-      type: z.enum(['teacher', 'student']),
-    }))
+    .input(
+      z.object({
+        classId: z.string(),
+        userId: z.string(),
+        type: z.enum(["teacher", "student"]),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const { classId, userId, type } = input;
+
+      await redis.del(CLASS_CACHE_KEY);
 
       const user = await prisma.user.findUnique({
         where: { id: userId },
@@ -383,10 +450,10 @@ export const classRouter = createTRPCRouter({
       const updatedClass = await prisma.class.update({
         where: { id: classId },
         data: {
-          [type === 'teacher' ? 'teachers' : 'students']: {
+          [type === "teacher" ? "teachers" : "students"]: {
             connect: { id: userId },
           },
-          [type === 'teacher' ? 'students' : 'teachers']: {
+          [type === "teacher" ? "students" : "teachers"]: {
             disconnect: { id: userId },
           },
         },
@@ -401,12 +468,16 @@ export const classRouter = createTRPCRouter({
       };
     }),
   removeMember: protectedTeacherProcedure
-    .input(z.object({
-      classId: z.string(),
-      userId: z.string(),
-    }))
+    .input(
+      z.object({
+        classId: z.string(),
+        userId: z.string(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const { classId, userId } = input;
+
+      await redis.del(CLASS_CACHE_KEY);
 
       const updatedClass = await prisma.class.update({
         where: { id: classId },
@@ -426,9 +497,11 @@ export const classRouter = createTRPCRouter({
       };
     }),
   join: protectedProcedure
-    .input(z.object({
-      classCode: z.string(),
-    }))
+    .input(
+      z.object({
+        classCode: z.string(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const { classCode } = input;
 
@@ -463,12 +536,14 @@ export const classRouter = createTRPCRouter({
 
       return {
         joinedClass: updatedClass,
-      }
+      };
     }),
   getInviteCode: protectedTeacherProcedure
-    .input(z.object({
-      classId: z.string(),
-    }))
+    .input(
+      z.object({
+        classId: z.string(),
+      })
+    )
     .query(async ({ ctx, input }) => {
       const { classId } = input;
 
@@ -483,12 +558,12 @@ export const classRouter = createTRPCRouter({
           data: {
             id: generateInviteCode(),
             classId,
-            expiresAt: new Date(Date.now() +  24 * 60 * 60 * 1000), // 24 hours from now
-          }
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours from now
+          },
         });
         return {
           code: newSession.id,
-        }
+        };
       }
 
       return {
@@ -496,9 +571,11 @@ export const classRouter = createTRPCRouter({
       };
     }),
   createInviteCode: protectedTeacherProcedure
-    .input(z.object({
-      classId: z.string(),
-    }))
+    .input(
+      z.object({
+        classId: z.string(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const { classId } = input;
 
@@ -507,8 +584,8 @@ export const classRouter = createTRPCRouter({
         data: {
           id: generateInviteCode(),
           classId,
-          expiresAt: new Date(Date.now() +  24 * 60 * 60 * 1000), // 24 hours from now
-        }
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours from now
+        },
       });
 
       return {
@@ -516,10 +593,12 @@ export const classRouter = createTRPCRouter({
       };
     }),
   getGrades: protectedClassMemberProcedure
-    .input(z.object({
-      classId: z.string(),
-      userId: z.string(),
-    }))
+    .input(
+      z.object({
+        classId: z.string(),
+        userId: z.string(),
+      })
+    )
     .query(async ({ ctx, input }) => {
       const { classId, userId } = input;
 
@@ -527,15 +606,15 @@ export const classRouter = createTRPCRouter({
         where: {
           id: classId,
           teachers: {
-            some: { id: ctx.user?.id }
-          }
-        }
+            some: { id: ctx.user?.id },
+          },
+        },
       });
       // If student, only allow viewing their own grades
       if (ctx.user?.id !== userId && !isTeacher) {
         throw new TRPCError({
-          code: 'UNAUTHORIZED',
-          message: 'You can only view your own grades',
+          code: "UNAUTHORIZED",
+          message: "You can only view your own grades",
         });
       }
 
@@ -544,8 +623,8 @@ export const classRouter = createTRPCRouter({
           studentId: userId,
           assignment: {
             classId: classId,
-            graded: true
-          }
+            graded: true,
+          },
         },
         include: {
           assignment: {
@@ -554,9 +633,9 @@ export const classRouter = createTRPCRouter({
               title: true,
               maxGrade: true,
               weight: true,
-            }
+            },
           },
-        }
+        },
       });
 
       return {
@@ -564,12 +643,14 @@ export const classRouter = createTRPCRouter({
       };
     }),
   updateGrade: protectedTeacherProcedure
-    .input(z.object({
-      classId: z.string(),
-      assignmentId: z.string(),
-      submissionId: z.string(),
-      gradeReceived: z.number().nullable(),
-    }))
+    .input(
+      z.object({
+        classId: z.string(),
+        assignmentId: z.string(),
+        submissionId: z.string(),
+        gradeReceived: z.number().nullable(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const { classId, assignmentId, submissionId, gradeReceived } = input;
 
@@ -589,165 +670,189 @@ export const classRouter = createTRPCRouter({
               title: true,
               maxGrade: true,
               weight: true,
-            }
-        }
-      }
+            },
+          },
+        },
       });
 
       return updatedSubmission;
     }),
-    getEvents: protectedTeacherProcedure
-      .input(z.object({
+  getEvents: protectedTeacherProcedure
+    .input(
+      z.object({
         classId: z.string(),
-      }))
-      .query(async ({ ctx, input }) => {
-        const { classId } = input;
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { classId } = input;
 
-        const events = await prisma.event.findMany({
-          where: {
-            class: {
-              id: classId,
-            }
+      const events = await prisma.event.findMany({
+        where: {
+          class: {
+            id: classId,
           },
-          select: {
-            name: true,
-            startTime: true,
-            endTime: true,
-          }
-        });
+        },
+        select: {
+          name: true,
+          startTime: true,
+          endTime: true,
+        },
+      });
 
-        return events;
-      }),
-    listMarkSchemes: protectedTeacherProcedure
-      .input(z.object({
+      return events;
+    }),
+  listMarkSchemes: protectedTeacherProcedure
+    .input(
+      z.object({
         classId: z.string(),
-      }))
-      .query(async ({ ctx, input }) => {
-        const { classId } = input;
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { classId } = input;
 
-        const markSchemes = await prisma.markScheme.findMany({
-          where: {
-            classId: classId,
-          },
-        });
+      const markSchemes = await prisma.markScheme.findMany({
+        where: {
+          classId: classId,
+        },
+      });
 
-        return markSchemes;
-      }),
-    createMarkScheme: protectedTeacherProcedure
-      .input(z.object({
+      return markSchemes;
+    }),
+  createMarkScheme: protectedTeacherProcedure
+    .input(
+      z.object({
         classId: z.string(),
         structure: z.string(),
-      }))
-      .mutation(async ({ ctx, input }) => {
-        const { classId, structure } = input;
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { classId, structure } = input;
 
-        const validatedStructure = structure.replace(/\\n/g, '\n');
+      await redis.del(CLASS_CACHE_KEY);
 
-        const markScheme = await prisma.markScheme.create({
-          data: {
-            classId: classId,
-            structured: validatedStructure,
-          },
-        });
+      const validatedStructure = structure.replace(/\\n/g, "\n");
 
-        return markScheme;
-      }),
-    updateMarkScheme: protectedTeacherProcedure
-      .input(z.object({
+      const markScheme = await prisma.markScheme.create({
+        data: {
+          classId: classId,
+          structured: validatedStructure,
+        },
+      });
+
+      return markScheme;
+    }),
+  updateMarkScheme: protectedTeacherProcedure
+    .input(
+      z.object({
         classId: z.string(),
         markSchemeId: z.string(),
         structure: z.string(),
-      }))
-      .mutation(async ({ ctx, input }) => {
-        const { classId, markSchemeId, structure } = input;
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { classId, markSchemeId, structure } = input;
 
-        const validatedStructure = structure.replace(/\\n/g, '\n');
+      await redis.del(CLASS_CACHE_KEY);
 
-        const markScheme = await prisma.markScheme.update({
-          where: { id: markSchemeId },
-          data: { structured: validatedStructure },
-        });
+      const validatedStructure = structure.replace(/\\n/g, "\n");
 
-        return markScheme;
-      }),
-    deleteMarkScheme: protectedTeacherProcedure
-      .input(z.object({
+      const markScheme = await prisma.markScheme.update({
+        where: { id: markSchemeId },
+        data: { structured: validatedStructure },
+      });
+
+      return markScheme;
+    }),
+  deleteMarkScheme: protectedTeacherProcedure
+    .input(
+      z.object({
         classId: z.string(),
         markSchemeId: z.string(),
-      }))
-      .mutation(async ({ ctx, input }) => {
-        const { classId, markSchemeId } = input;
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { classId, markSchemeId } = input;
 
-        const markScheme = await prisma.markScheme.delete({
-          where: { id: markSchemeId },
-        });
+      await redis.del(CLASS_CACHE_KEY);
 
-        return markScheme;
-      }),
-    listGradingBoundaries: protectedTeacherProcedure
-      .input(z.object({
+      const markScheme = await prisma.markScheme.delete({
+        where: { id: markSchemeId },
+      });
+
+      return markScheme;
+    }),
+  listGradingBoundaries: protectedTeacherProcedure
+    .input(
+      z.object({
         classId: z.string(),
-      }))
-      .query(async ({ ctx, input }) => {
-        const { classId } = input;
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { classId } = input;
 
-        const gradingBoundaries = await prisma.gradingBoundary.findMany({
-          where: {
-            classId: classId,
-          },
-        });
+      const gradingBoundaries = await prisma.gradingBoundary.findMany({
+        where: {
+          classId: classId,
+        },
+      });
 
-        return gradingBoundaries;
-      }),
-    createGradingBoundary: protectedTeacherProcedure
-      .input(z.object({
+      return gradingBoundaries;
+    }),
+  createGradingBoundary: protectedTeacherProcedure
+    .input(
+      z.object({
         classId: z.string(),
         structure: z.string(),
-      }))
-      .mutation(async ({ ctx, input }) => {
-        const { classId, structure } = input;
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { classId, structure } = input;
 
-        const validatedStructure = structure.replace(/\\n/g, '\n');
+      const validatedStructure = structure.replace(/\\n/g, "\n");
 
-        const gradingBoundary = await prisma.gradingBoundary.create({
-          data: {
-            classId: classId,
-            structured: validatedStructure,
-          },
-        });
+      const gradingBoundary = await prisma.gradingBoundary.create({
+        data: {
+          classId: classId,
+          structured: validatedStructure,
+        },
+      });
 
-        return gradingBoundary;
-      }),
-    updateGradingBoundary: protectedTeacherProcedure
-      .input(z.object({
+      return gradingBoundary;
+    }),
+  updateGradingBoundary: protectedTeacherProcedure
+    .input(
+      z.object({
         classId: z.string(),
         gradingBoundaryId: z.string(),
         structure: z.string(),
-      }))
-      .mutation(async ({ ctx, input }) => {
-        const { classId, gradingBoundaryId, structure } = input;
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { classId, gradingBoundaryId, structure } = input;
 
-        const validatedStructure = structure.replace(/\\n/g, '\n');
+      const validatedStructure = structure.replace(/\\n/g, "\n");
 
-        const gradingBoundary = await prisma.gradingBoundary.update({
-          where: { id: gradingBoundaryId },
-          data: { structured: validatedStructure },
-        });
+      const gradingBoundary = await prisma.gradingBoundary.update({
+        where: { id: gradingBoundaryId },
+        data: { structured: validatedStructure },
+      });
 
-        return gradingBoundary;
-      }),
-    deleteGradingBoundary: protectedTeacherProcedure
-      .input(z.object({
+      return gradingBoundary;
+    }),
+  deleteGradingBoundary: protectedTeacherProcedure
+    .input(
+      z.object({
         classId: z.string(),
         gradingBoundaryId: z.string(),
-      }))
-      .mutation(async ({ ctx, input }) => {
-        const { classId, gradingBoundaryId } = input;
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { classId, gradingBoundaryId } = input;
 
-        const gradingBoundary = await prisma.gradingBoundary.delete({
-          where: { id: gradingBoundaryId },
-        });
+      const gradingBoundary = await prisma.gradingBoundary.delete({
+        where: { id: gradingBoundaryId },
+      });
 
-        return gradingBoundary;
-      }),
+      return gradingBoundary;
+    }),
 });

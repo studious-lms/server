@@ -95,6 +95,9 @@ export const userRouter = createTRPCRouter({
         },
       });
 
+      const cacheKey = `user:${ctx.user.id}`;
+      await redis.del(cacheKey);
+
       return updatedUser;
     }),
 });

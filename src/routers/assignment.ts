@@ -11,8 +11,6 @@ import {
   protectedTeacherProcedure,
 } from "../trpc";
 
-const cacheKey = "assignment:all";
-
 const fileSchema = z.object({
   name: z.string(),
   type: z.string(),
@@ -139,7 +137,9 @@ export const assignmentRouter = createTRPCRouter({
         });
       }
 
+      const cacheKey = `assignment:${ctx.user.id}:${classId}`;
       await redis.del(cacheKey);
+      await redis.del(`classes:${classId}`);
 
       // Get all students in the class
       const classData = await prisma.class.findUnique({
@@ -315,8 +315,6 @@ export const assignmentRouter = createTRPCRouter({
         });
       }
 
-      await redis.del(cacheKey);
-
       // Get the assignment with current attachments
       const assignment = await prisma.assignment.findFirst({
         where: {
@@ -467,6 +465,11 @@ export const assignmentRouter = createTRPCRouter({
         });
       }
 
+      // invalidate cache for the specific assignment
+      const cacheKey = `assignment:${ctx.user.id}:${assignment?.classId}`;
+      await redis.del(cacheKey);
+      await redis.del(`classes:${assignment?.classId}`);
+
       return updatedAssignment;
     }),
 
@@ -481,8 +484,6 @@ export const assignmentRouter = createTRPCRouter({
           message: "User must be authenticated",
         });
       }
-
-      await redis.del(cacheKey);
 
       // Get the assignment with all related files
       const assignment = await prisma.assignment.findFirst({
@@ -551,6 +552,11 @@ export const assignmentRouter = createTRPCRouter({
         where: { id },
       });
 
+      // invalidate cache for the specific assignment
+      const cacheKey = `assignment:${ctx.user.id}:${assignment?.classId}`;
+      await redis.del(cacheKey);
+      await redis.del(`classes:${assignment?.classId}`);
+
       return {
         id,
       };
@@ -569,6 +575,8 @@ export const assignmentRouter = createTRPCRouter({
       }
 
       // Try getting data from Redis
+      // invalidate cache for the specific assignment
+      const cacheKey = `assignment:${ctx.user.id}:${classId}`;
       const cached = await redis.get(cacheKey);
       console.log("class Cache hit:", cached);
       if (cached) {
@@ -1003,6 +1011,11 @@ export const assignmentRouter = createTRPCRouter({
         );
       }
 
+      // invalidate cache for the specific assignment
+      const cacheKey = `assignment:${ctx.user.id}:${input?.classId}`;
+      await redis.del(cacheKey);
+      await redis.del(`classes:${input?.classId}`);
+
       // Update submission with attachments
       return await prisma.submission.update({
         where: { id: submission.id },
@@ -1275,6 +1288,11 @@ export const assignmentRouter = createTRPCRouter({
         );
       }
 
+      // invalidate cache for the specific assignment
+      const cacheKey = `assignment:${ctx.user.id}:${input?.classId}`;
+      await redis.del(cacheKey);
+      await redis.del(`classes:${input?.classId}`);
+
       // Update submission with grade and attachments
       return await prisma.submission.update({
         where: { id: submissionId },
@@ -1420,6 +1438,11 @@ export const assignmentRouter = createTRPCRouter({
           },
         },
       });
+
+      // invalidate cache for the specific assignment
+      const cacheKey = `assignment:${ctx.user.id}:${input?.classId}`;
+      await redis.del(cacheKey);
+      await redis.del(`classes:${input?.classId}`);
 
       return { assignment: updatedAssignment };
     }),

@@ -10,11 +10,9 @@ import {
 } from "../trpc";
 import { generateInviteCode } from "../utils/generateInviteCode";
 
-const CLASS_CACHE_KEY = "classes:all";
-
 export const classRouter = createTRPCRouter({
   getAll: protectedProcedure.query(async ({ ctx }) => {
-    const cacheKey = "classes:all";
+    const cacheKey = `classes:${ctx.user?.id}`;
 
     // Try getting data from Redis
     const cached = await redis.get(cacheKey);
@@ -271,7 +269,9 @@ export const classRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { classId, ...updateData } = input;
 
-      await redis.del(CLASS_CACHE_KEY);
+      const cacheKey = `classes:${ctx.user?.id}`;
+
+      await redis.del(cacheKey);
 
       const updatedClass = await prisma.class.update({
         where: {
@@ -303,7 +303,9 @@ export const classRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { students, teachers, name, section, subject } = input;
 
-      await redis.del(CLASS_CACHE_KEY);
+      const cacheKey = `classes:${ctx.user?.id}`;
+
+      await redis.del(cacheKey);
 
       if (teachers && teachers.length > 0 && students && students.length > 0) {
         const newClass = await prisma.class.create({
@@ -349,7 +351,9 @@ export const classRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await redis.del(CLASS_CACHE_KEY);
+      const cacheKey = `classes:${ctx.user?.id}`;
+
+      await redis.del(cacheKey);
 
       // Verify user is the teacher of this class
       const classToDelete = await prisma.class.findFirst({
@@ -386,7 +390,9 @@ export const classRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { classId, studentId } = input;
 
-      await redis.del(CLASS_CACHE_KEY);
+      const cacheKey = `classes:${ctx.user?.id}`;
+
+      await redis.del(cacheKey);
 
       const student = await prisma.user.findUnique({
         where: {
@@ -433,7 +439,9 @@ export const classRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { classId, userId, type } = input;
 
-      await redis.del(CLASS_CACHE_KEY);
+      const cacheKey = `classes:${ctx.user?.id}`;
+
+      await redis.del(cacheKey);
 
       const user = await prisma.user.findUnique({
         where: { id: userId },
@@ -477,7 +485,9 @@ export const classRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { classId, userId } = input;
 
-      await redis.del(CLASS_CACHE_KEY);
+      const cacheKey = `classes:${ctx.user?.id}`;
+
+      await redis.del(cacheKey);
 
       const updatedClass = await prisma.class.update({
         where: { id: classId },
@@ -728,7 +738,9 @@ export const classRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { classId, structure } = input;
 
-      await redis.del(CLASS_CACHE_KEY);
+      const cacheKey = `classes:${ctx.user?.id}`;
+
+      await redis.del(cacheKey);
 
       const validatedStructure = structure.replace(/\\n/g, "\n");
 
@@ -752,7 +764,9 @@ export const classRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { classId, markSchemeId, structure } = input;
 
-      await redis.del(CLASS_CACHE_KEY);
+      const cacheKey = `classes:${ctx.user?.id}`;
+
+      await redis.del(cacheKey);
 
       const validatedStructure = structure.replace(/\\n/g, "\n");
 
@@ -773,7 +787,9 @@ export const classRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { classId, markSchemeId } = input;
 
-      await redis.del(CLASS_CACHE_KEY);
+      const cacheKey = `classes:${ctx.user?.id}`;
+
+      await redis.del(cacheKey);
 
       const markScheme = await prisma.markScheme.delete({
         where: { id: markSchemeId },

@@ -9,8 +9,6 @@ import {
   protectedTeacherProcedure,
 } from "../trpc";
 
-const CACHE_KEY = "announcement:all";
-
 const AnnouncementSelect = {
   id: true,
   teacher: {
@@ -32,9 +30,11 @@ export const announcementRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       // Try getting data from Redis
-      const cached = await redis.get(CACHE_KEY);
-      console.log("announcement Cache hit:", cached);
+      const cacheKey = `announcement:${ctx.user?.id}:${input.classId}`;
+      const cached = await redis.get(cacheKey);
+
       if (cached) {
+        console.log("cached announcement found", cached);
         return JSON.parse(cached);
       }
 
@@ -48,14 +48,14 @@ export const announcementRouter = createTRPCRouter({
         },
       });
 
-      const data = {
-        announcements,
-      };
+      const data = { announcements };
 
       // Store in Redis (set cache for 10 mins)
-      await redis.set(CACHE_KEY, JSON.stringify(data), {
+      await redis.set(cacheKey, JSON.stringify(data), {
         EX: 600, // 600 seconds = 10 minutes
       });
+
+      console.log("announcement data fetched from DB", data);
 
       return data;
     }),
@@ -68,8 +68,6 @@ export const announcementRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await redis.del(CACHE_KEY);
-
       const announcement = await prisma.announcement.create({
         data: {
           remarks: input.remarks,
@@ -87,6 +85,13 @@ export const announcementRouter = createTRPCRouter({
         select: AnnouncementSelect,
       });
 
+      // Invalidate cache for the specific class
+      const cacheKey = `announcement:${ctx?.user?.id}:${input.classId}`;
+      await redis.del(cacheKey);
+
+      // Invalidate cache for the class
+      await redis.del(`classes:${input.classId}`);
+
       return {
         announcement,
       };
@@ -102,8 +107,6 @@ export const announcementRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await redis.del(CACHE_KEY);
-
       const announcement = await prisma.announcement.findUnique({
         where: { id: input.id },
         include: {
@@ -129,6 +132,13 @@ export const announcementRouter = createTRPCRouter({
         },
       });
 
+      // Invalidate cache for the specific announcement
+      const cacheKey = `announcement:${ctx?.user?.id}:${announcement.classId}`;
+      await redis.del(cacheKey);
+
+      // Invalidate cache for the class
+      await redis.del(`classes:${announcement.classId}`);
+
       return { announcement: updatedAnnouncement };
     }),
 
@@ -139,8 +149,6 @@ export const announcementRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await redis.del(CACHE_KEY);
-
       const announcement = await prisma.announcement.findUnique({
         where: { id: input.id },
         include: {
@@ -162,6 +170,13 @@ export const announcementRouter = createTRPCRouter({
       await prisma.announcement.delete({
         where: { id: input.id },
       });
+
+      // Invalidate cache for the specific announcement
+      const cacheKey = `announcement:${ctx?.user?.id}:${announcement.classId}`;
+      await redis.del(cacheKey);
+
+      // Invalidate cache for the class
+      await redis.del(`classes:${announcement.classId}`);
 
       return { success: true };
     }),

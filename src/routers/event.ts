@@ -5,8 +5,6 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 
-const cacheKey = "event:all";
-
 const eventSchema = z.object({
   name: z.string().optional(),
   location: z.string().optional(),
@@ -33,6 +31,7 @@ export const eventRouter = createTRPCRouter({
       }
 
       // Try getting data from Redis
+      const cacheKey = `event:${ctx.user.id}:${input.id}`;
       const cached = await redis.get(cacheKey);
       console.log("class Cache hit:", cached);
       if (cached) {
@@ -110,8 +109,6 @@ export const eventRouter = createTRPCRouter({
         });
       }
 
-      await redis.del(cacheKey);
-
       // If classId is provided, check if user is a teacher of the class
       if (input.classId) {
         const classData = await prisma.class.findUnique({
@@ -163,6 +160,10 @@ export const eventRouter = createTRPCRouter({
         },
       });
 
+      const cacheKey = `event:${ctx.user.id}:${event.id}`;
+      await redis.del(cacheKey);
+      await redis.del(`classes:${input.classId}`);
+
       return { event };
     }),
 
@@ -180,8 +181,6 @@ export const eventRouter = createTRPCRouter({
           message: "You must be logged in to update an event",
         });
       }
-
-      await redis.del(cacheKey);
 
       const event = await prisma.event.findUnique({
         where: { id: input.id },
@@ -214,6 +213,10 @@ export const eventRouter = createTRPCRouter({
         },
       });
 
+      const cacheKey = `event:${ctx.user.id}:${event.id}`;
+      await redis.del(cacheKey);
+      await redis.del(`classes:${event?.classId}`);
+
       return { event: updatedEvent };
     }),
 
@@ -230,8 +233,6 @@ export const eventRouter = createTRPCRouter({
           message: "You must be logged in to delete an event",
         });
       }
-
-      await redis.del(cacheKey);
 
       const event = await prisma.event.findUnique({
         where: { id: input.id },
@@ -254,6 +255,10 @@ export const eventRouter = createTRPCRouter({
       await prisma.event.delete({
         where: { id: input.id },
       });
+
+      const cacheKey = `event:${ctx.user.id}:${event.id}`;
+      await redis.del(cacheKey);
+      await redis.del(`classes:${event?.classId}`);
 
       return { success: true };
     }),
@@ -377,6 +382,10 @@ export const eventRouter = createTRPCRouter({
         },
       });
 
+      const cacheKey = `event:${ctx.user.id}:${event.id}`;
+      await redis.del(cacheKey);
+      await redis.del(`classes:${event?.classId}`);
+
       return { assignment: updatedAssignment };
     }),
 
@@ -457,6 +466,10 @@ export const eventRouter = createTRPCRouter({
           },
         },
       });
+
+      const cacheKey = `event:${ctx.user.id}:${event.id}`;
+      await redis.del(cacheKey);
+      await redis.del(`classes:${event?.classId}`);
 
       return { assignment: updatedAssignment };
     }),

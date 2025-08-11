@@ -292,6 +292,155 @@ export const assignmentRouter = createTRPCRouter({
 
       return assignment;
     }),
+  createAssignmentComment: protectedProcedure
+    .input(
+      z.object({
+        assignmentId: z.string().uuid(),
+        comment: z.string().min(1, "Comment cannot be empty"),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { assignmentId, comment } = input;
+
+      if (!ctx.user) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "User must be authenticated",
+        });
+      }
+
+      // Check if assignment exists
+      const assignment = await prisma.assignment.findUnique({
+        where: { id: assignmentId },
+        select: { id: true, classId: true },
+      });
+
+      if (!assignment) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Assignment not found",
+        });
+      }
+
+      // Create comment
+      const newComment = await prisma.assignmentComment.create({
+        data: {
+          comment,
+          assignment: { connect: { id: assignmentId } },
+          user: { connect: { id: ctx.user.id } },
+        },
+        include: {
+          user: {
+            select: { id: true, username: true },
+          },
+        },
+      });
+
+      // Clear cache for this assignment
+      await redis.del(`assignment:${assignmentId}`);
+      await redis.del(`classes:${assignment.classId}`);
+
+      return newComment;
+    }),
+  getComments: protectedProcedure
+    .input(z.object({ assignmentId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const comments = await prisma.assignmentComment.findMany({
+        where: { assignmentId: input.assignmentId },
+        include: {
+          user: {
+            select: {
+              id: true,
+              username: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "asc" },
+      });
+
+      return comments;
+    }),
+  updateAssignmentComment: protectedProcedure
+    .input(
+      z.object({
+        id: z.string(), // comment ID
+        comment: z.string().min(1, "Comment cannot be empty"),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { id, comment } = input;
+
+      if (!ctx.user) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "User must be authenticated",
+        });
+      }
+
+      // Find the comment first
+      const existingComment = await prisma.assignmentComment.findUnique({
+        where: { id },
+        include: {
+          user: true,
+        },
+      });
+
+      if (!existingComment) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Comment not found",
+        });
+      }
+
+      // Ensure the logged-in user is the owner of the comment
+      if (existingComment.userId !== ctx.user.id) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You can only edit your own comments",
+        });
+      }
+
+      // Update the comment
+      const updatedComment = await prisma.assignmentComment.update({
+        where: { id },
+        data: {
+          comment,
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              username: true,
+            },
+          },
+        },
+      });
+
+      return updatedComment;
+    }),
+  deleteAssignmentComment: protectedProcedure
+    .input(
+      z.object({
+        commentId: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Ensure the comment exists
+      const comment = await prisma.assignmentComment.findUnique({
+        where: { id: input.commentId },
+      });
+
+      if (!comment) {
+        throw new Error("Comment not found");
+      }
+
+      // Delete comment
+      const deletedComment = await prisma.assignmentComment.delete({
+        where: { id: input.commentId },
+      });
+
+      return deletedComment;
+    }),
   update: protectedProcedure
     .input(updateAssignmentSchema)
     .mutation(async ({ ctx, input }) => {

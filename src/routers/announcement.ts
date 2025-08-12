@@ -30,7 +30,7 @@ export const announcementRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       // Try getting data from Redis
-      const cacheKey = `announcement:${ctx.user?.id}:${input.classId}`;
+      const cacheKey = `announcement:${input.classId}`;
       const cached = await redis.get(cacheKey);
 
       if (cached) {
@@ -86,7 +86,7 @@ export const announcementRouter = createTRPCRouter({
       });
 
       // Invalidate cache for the specific class
-      const cacheKey = `announcement:${ctx?.user?.id}:${input.classId}`;
+      const cacheKey = `announcement:${input.classId}`;
       await redis.del(cacheKey);
 
       // Invalidate cache for the class
@@ -133,7 +133,7 @@ export const announcementRouter = createTRPCRouter({
       });
 
       // Invalidate cache for the specific announcement
-      const cacheKey = `announcement:${ctx?.user?.id}:${announcement.classId}`;
+      const cacheKey = `announcement:${announcement.classId}`;
       await redis.del(cacheKey);
 
       // Invalidate cache for the class
@@ -172,7 +172,7 @@ export const announcementRouter = createTRPCRouter({
       });
 
       // Invalidate cache for the specific announcement
-      const cacheKey = `announcement:${ctx?.user?.id}:${announcement.classId}`;
+      const cacheKey = `announcement:${announcement.classId}`;
       await redis.del(cacheKey);
 
       // Invalidate cache for the class

@@ -1743,10 +1743,20 @@ export const assignmentRouter = createTRPCRouter({
       });
     }
 
+    const start = new Date();
+    start.setHours(0, 0, 0, 0); // beginning of today
+
+    const end = new Date();
+    end.setHours(23, 59, 59, 999); // end of today
+
     const assignments = await prisma.assignment.findMany({
       where: {
+        // dueDate: {
+        //   equals: new Date(),
+        // },
         dueDate: {
-          equals: new Date(),
+          gte: start,
+          lte: end,
         },
       },
       select: {

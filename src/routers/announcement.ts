@@ -125,6 +125,17 @@ export const announcementRouter = createTRPCRouter({
         });
       }
 
+      // ✅ Authorization guard — only teachers of this class can update
+      const isTeacher = announcement.class.teachers.some(
+        (t) => t.id === ctx.user?.id
+      );
+      if (!isTeacher) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You are not authorized to update this announcement",
+        });
+      }
+
       const updatedAnnouncement = await prisma.announcement.update({
         where: { id: input.id },
         data: {
@@ -164,6 +175,17 @@ export const announcementRouter = createTRPCRouter({
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Announcement not found",
+        });
+      }
+
+      // ✅ Authorization guard — only teachers of this class can update
+      const isTeacher = announcement.class.teachers.some(
+        (t) => t.id === ctx.user?.id
+      );
+      if (!isTeacher) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You are not authorized to update this announcement",
         });
       }
 

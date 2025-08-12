@@ -20,7 +20,7 @@ export const agendaRouter = createTRPCRouter({
         });
       }
 
-      const cacheKey = `agenda:${ctx?.user?.id}`;
+      const cacheKey = `agenda:${ctx.user.id}:${input.weekStart}`;
 
       // Try getting data from Redis
       const cached = await redis.get(cacheKey);

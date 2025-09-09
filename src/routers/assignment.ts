@@ -276,6 +276,8 @@ export const assignmentRouter = createTRPCRouter({
               id: true,
               name: true,
               type: true,
+              path: true,
+              size: true,
               thumbnail: {
                 select: {
                   path: true
@@ -378,7 +380,11 @@ export const assignmentRouter = createTRPCRouter({
               id: true,
               name: true,
               type: true,
-              thumbnail: true
+              thumbnail: true,
+              size: true,
+              path: true,
+              uploadedAt: true,
+              thumbnailId: true,
             }
           },
           section: true,
@@ -527,6 +533,7 @@ export const assignmentRouter = createTRPCRouter({
               type: true,
               size: true,
               path: true,
+              uploadedAt: true,
               thumbnailId: true,
             }
           },

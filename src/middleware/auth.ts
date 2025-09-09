@@ -43,8 +43,6 @@ export const createAuthMiddleware = (t: any) => {
         });
       }
 
-      console.log(user)
-
       return next({
         ctx: {
           ...ctx,

@@ -6,7 +6,7 @@ import { createLoggingMiddleware } from './middleware/logging';
 import { createAuthMiddleware } from './middleware/auth';
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { handlePrismaError } from './utils/prismaErrorHandler';
+import { handlePrismaError, PrismaErrorInfo } from './utils/prismaErrorHandler';
 
 interface CreateContextOptions {
   req: Request;
@@ -52,7 +52,7 @@ export const createTRPCContext = async (opts: CreateContextOptions): Promise<Con
 export const t = initTRPC.context<Context>().create({
   errorFormatter({ shape, error }) {
     // Handle Prisma errors specifically
-    let prismaErrorInfo = null;
+    let prismaErrorInfo: PrismaErrorInfo | null = null;
     if (error.cause) {
       try {
         prismaErrorInfo = handlePrismaError(error.cause);

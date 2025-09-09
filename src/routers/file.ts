@@ -4,6 +4,7 @@ import { TRPCError } from "@trpc/server";
 import { getSignedUrl, deleteFile } from "../lib/googleCloudStorage";
 import type { User } from "@prisma/client";
 import { prisma } from "../lib/prisma";
+import { logger } from "../utils/logger";
 
 export const fileRouter = createTRPCRouter({
   getSignedUrl: protectedProcedure
@@ -49,6 +50,20 @@ export const fileRouter = createTRPCRouter({
               }
             }
           },
+          annotations: {
+            include: {
+              student: true,
+              assignment: {
+                include: {
+                  class: {
+                    include: {
+                      teachers: true,
+                    }
+                  }
+                }
+              }
+            }
+          },
           folder: {
             include: {
               class: {
@@ -72,14 +87,24 @@ export const fileRouter = createTRPCRouter({
       // Check if user has access to this file
       let hasAccess = false;
 
+      let classId: string | null = null;
+
       // Check if user is a teacher of the class
       if (file.assignment?.class) {
-        hasAccess = file.assignment.class.teachers.some(teacher => teacher.id === userId);
+        classId = file.assignment.class.id;
+        hasAccess = file.assignment.class.teachers.some(teacher => teacher.id === userId) || false;
       }
 
-      // Check if user is a student of the class
-      if (file.assignment?.class) {
-        hasAccess = hasAccess || file.assignment.class.students.some(student => student.id === userId);
+      if (file.submission?.assignment?.classId) {
+        classId = file.submission.assignment.classId;
+        hasAccess = file.submission?.studentId === userId || false;
+        if (!hasAccess) hasAccess = file.submission.assignment.class.teachers.some(teacher => teacher.id === userId) || false;
+      }
+
+      if (file.annotations?.assignment?.classId) {
+        classId = file.annotations?.assignment.classId;
+        hasAccess = file.annotations?.studentId === userId || false;
+        if (!hasAccess) hasAccess = file.annotations.assignment.class.teachers.some(teacher => teacher.id === userId) || false;
       }
 
       // Check if user is the file owner
@@ -104,7 +129,7 @@ export const fileRouter = createTRPCRouter({
         const signedUrl = await getSignedUrl(file.path);
         return { url: signedUrl };
       } catch (error) {
-        console.error('Error generating signed URL:', error);
+        logger.error('Error generating signed URL:', error as Record<string, any>);
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to generate download URL",
@@ -321,7 +346,7 @@ export const fileRouter = createTRPCRouter({
           await deleteFile(file.thumbnail.path);
         }
       } catch (error) {
-        console.warn(`Failed to delete file ${file.path}:`, error);
+        logger.warn(`Failed to delete file ${file.path}:`, error as Record<string, any>);
       }
 
       // Delete the file record from database

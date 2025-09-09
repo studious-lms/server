@@ -225,9 +225,10 @@ export const classRouter = createTRPCRouter({
       name: z.string(),
       section: z.string(),
       subject: z.string(),
+      color: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const { students, teachers, name, section, subject } = input;
+      const { students, teachers, name, section, subject, color } = input;
       
       if (teachers && teachers.length > 0 && students && students.length > 0) {
         const newClass = await prisma.class.create({
@@ -235,6 +236,7 @@ export const classRouter = createTRPCRouter({
             name,
             section,
             subject,
+            color,
             teachers: {
               connect: teachers.map(teacher => ({ id: teacher })),
             },
@@ -255,6 +257,7 @@ export const classRouter = createTRPCRouter({
           name,
           section,
           subject,
+          color,
           teachers: {
             connect: {
               id: ctx.user?.id,

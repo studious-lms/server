@@ -237,6 +237,8 @@ export const authRouter = createTRPCRouter({
           select: {
             id: true,
             email: true,
+            role: true,
+            schoolId: true,
           },
         });
 

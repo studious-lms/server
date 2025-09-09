@@ -12,6 +12,7 @@ import { authRouter } from "./auth";
 import { agendaRouter } from "./agenda";
 import { fileRouter } from "./file";
 import { folderRouter } from "./folder";
+import { notificationRouter } from "./notifications";
 
 export const appRouter = createTRPCRouter({
   class: classRouter,
@@ -25,7 +26,8 @@ export const appRouter = createTRPCRouter({
   agenda: agendaRouter,
   file: fileRouter,
   folder: folderRouter,
-});
+  notification: notificationRouter,
+}); 
 
 // Export type router type definition
 export type AppRouter = typeof appRouter;

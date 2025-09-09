@@ -37,10 +37,13 @@ class Logger {
   private levelEmojis: Record<LogLevel, string>;
 
   private constructor() {
-    this.isDevelopment = process.env.NODE_ENV === 'development';
+
+    // this.isDevelopment = process.env.NODE_ENV === 'development';
+    this.isDevelopment = true;
 
     this.mode = (process.env.LOG_MODE as LogMode) || 'normal';
     
+
     this.levelColors = {
       [LogLevel.INFO]: colors.blue,
       [LogLevel.WARN]: colors.yellow,
@@ -109,7 +112,7 @@ class Logger {
   private log(level: LogLevel, message: string, context?: Record<string, any>) {
     if (!this.shouldLog(level)) 
       return;    
-    
+
     if (level == LogLevel.WARN || level == LogLevel.ERROR) {
       if (level == LogLevel.ERROR) {
         // alert me

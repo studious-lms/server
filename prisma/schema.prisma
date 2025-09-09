@@ -10,11 +10,9 @@ generator client {
 }
 
 datasource db {
-  // provider = "postgresql"
-  // url      = env("DATABASE_URL")
-  // directUrl = env("DIRECT_URL")
-  provider = "sqlite"
-  url = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum AssignmentType {
@@ -29,13 +27,23 @@ enum AssignmentType {
   OTHER
 }
 
+enum UserRole {
+  STUDENT
+  TEACHER
+  ADMIN
+  NONE
+}
+
 model School {
   id          String      @id @default(uuid())
   name        String
   logo        File        @relation(references: [id], fields: [logoId])
   logoId      String
-
-  members     User[]
+  subdomain   String?     @unique
+  
+  
+  users       User[]
+  classes     Class[]
 }
 
 model User {
@@ -45,6 +53,7 @@ model User {
   password     String
   profile      UserProfile?
   verified     Boolean     @default(false)
+  role         UserRole    @default(NONE)
 
   profileId    String?     @unique
 
@@ -57,6 +66,8 @@ model User {
   assignments Assignment[]
   events      Event[]
   announcements Announcement[]
+  notificationsSent Notification[] @relation("SentNotifications")
+  notificationsReceived Notification[] @relation("ReceivedNotifications")
 
   presentAttendance  Attendance[] @relation("PresentAttendance")
   lateAttendance    Attendance[] @relation("LateAttendance")
@@ -93,6 +104,9 @@ model Class {
   gradingBoundaries GradingBoundary[] @relation("ClassToGradingBoundary")
   draftFiles File[] @relation("ClassDraftFiles")
   classFiles Folder? @relation("ClassFiles")
+
+  school    School? @relation(fields: [schoolId], references: [id])
+  schoolId  String?
 }
 
 model MarkScheme {
@@ -266,4 +280,16 @@ model Attendance {
   present   User[]   @relation("PresentAttendance")
   late      User[]   @relation("LateAttendance")
   absent    User[]   @relation("AbsentAttendance")
+}
+
+model Notification {
+  id String @id @default(uuid())
+  title String
+  content String
+  createdAt DateTime @default(now())
+  senderId String? // no ID means sys
+  receiverId String
+  read Boolean @default(false)
+  sender User? @relation("SentNotifications", fields: [senderId], references: [id])
+  receiver User @relation("ReceivedNotifications", fields: [receiverId], references: [id])
 }

@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
+import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc.js";
 import { TRPCError } from "@trpc/server";
-import { prisma } from "../lib/prisma";
+import { prisma } from "../lib/prisma.js";
 import { v4 as uuidv4 } from 'uuid';
 import { compare, hash } from "bcryptjs";
-import { transport } from "../utils/email";
-import { prismaWrapper } from "../utils/prismaWrapper";
+import { transport } from "../utils/email.js";
+import { prismaWrapper } from "../utils/prismaWrapper.js";
 
 const loginSchema = z.object({
   username: z.string(),

@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure, protectedTeacherProcedure, protectedClassMemberProcedure } from "../trpc";
-import { prisma } from "../lib/prisma";
+import { createTRPCRouter, protectedProcedure, protectedTeacherProcedure, protectedClassMemberProcedure } from "../trpc.js";
+import { prisma } from "../lib/prisma.js";
 import { TRPCError } from "@trpc/server";
-import { generateInviteCode } from "../utils/generateInviteCode";
+import { generateInviteCode } from "../utils/generateInviteCode.js";
 
 export const classRouter = createTRPCRouter({
   getAll: protectedProcedure

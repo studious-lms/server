@@ -1,6 +1,6 @@
-import { prisma } from "./lib/prisma";
+import { prisma } from "./lib/prisma.js";
 import { hash } from "bcryptjs";
-import { logger } from "./utils/logger";
+import { logger } from "./utils/logger.js";
 
 export async function clearDatabase() {
     await prisma.class.deleteMany();

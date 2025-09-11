@@ -5,10 +5,10 @@ import { Server } from 'socket.io';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { createExpressMiddleware } from '@trpc/server/adapters/express';
-import { appRouter } from './routers/_app';
-import { createTRPCContext, createCallerFactory } from './trpc';
-import { logger } from './utils/logger';
-import { setupSocketHandlers } from './socket/handlers';
+import { appRouter } from './routers/_app.js';
+import { createTRPCContext, createCallerFactory } from './trpc.js';
+import { logger } from './utils/logger.js';
+import { setupSocketHandlers } from './socket/handlers.js';
 
 dotenv.config();
 

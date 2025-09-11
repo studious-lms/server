@@ -1,5 +1,5 @@
 import { inferAsyncReturnType } from '@trpc/server';
-import { createTRPCContext } from '../trpc';
+import { createTRPCContext } from '../trpc.js';
 
 export type Context = inferAsyncReturnType<typeof createTRPCContext> & {
   isTeacher?: boolean;

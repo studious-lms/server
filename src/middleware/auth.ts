@@ -1,6 +1,6 @@
 import { TRPCError } from '@trpc/server';
-import { prisma } from '../lib/prisma';
-import type { MiddlewareContext } from '../types/trpc';
+import { prisma } from '../lib/prisma.js';
+import type { MiddlewareContext } from '../types/trpc.js';
 
 export const createAuthMiddleware = (t: any) => {
 

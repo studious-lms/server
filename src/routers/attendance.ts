@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure } from "../trpc";
+import { createTRPCRouter, protectedProcedure } from "../trpc.js";
 import { TRPCError } from "@trpc/server";
-import { prisma } from "../lib/prisma";
+import { prisma } from "../lib/prisma.js";
 
 const attendanceSchema = z.object({
   eventId: z.string().optional(),

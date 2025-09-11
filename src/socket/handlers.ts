@@ -1,5 +1,5 @@
 import { Socket, Server } from 'socket.io';
-import { logger } from '../utils/logger';
+import { logger } from '../utils/logger.js';
 
 export const setupSocketHandlers = (io: Server) => {
   io.on('connection', (socket: Socket) => {

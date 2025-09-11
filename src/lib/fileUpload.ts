@@ -1,8 +1,8 @@
 import { TRPCError } from "@trpc/server";
 import { v4 as uuidv4 } from "uuid";
-import { uploadFile as uploadToGCS, getSignedUrl } from "./googleCloudStorage";
-import { generateThumbnail, storeThumbnail, generateMediaThumbnail } from "./thumbnailGenerator";
-import { prisma } from "./prisma";
+import { uploadFile as uploadToGCS, getSignedUrl } from "./googleCloudStorage.js";
+import { generateThumbnail, storeThumbnail, generateMediaThumbnail } from "./thumbnailGenerator.js";
+import { prisma } from "./prisma.js";
 
 export interface FileData {
   name: string;

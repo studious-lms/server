@@ -1,6 +1,6 @@
 {
   "name": "@studious-lms/server",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Backend server for Studious application",
   "main": "dist/exportType.js",
   "types": "dist/exportType.d.ts",

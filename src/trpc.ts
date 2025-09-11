@@ -1,12 +1,12 @@
 import { initTRPC, TRPCError } from '@trpc/server';
 import { ZodError } from 'zod';
-import { logger } from './utils/logger';
-import { prisma } from './lib/prisma';
-import { createLoggingMiddleware } from './middleware/logging';
-import { createAuthMiddleware } from './middleware/auth';
+import { logger } from './utils/logger.js';
+import { prisma } from './lib/prisma.js';
+import { createLoggingMiddleware } from './middleware/logging.js';
+import { createAuthMiddleware } from './middleware/auth.js';
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { handlePrismaError, PrismaErrorInfo } from './utils/prismaErrorHandler';
+import { handlePrismaError, PrismaErrorInfo } from './utils/prismaErrorHandler.js';
 
 interface CreateContextOptions {
   req: Request;

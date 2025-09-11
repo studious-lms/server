@@ -1,6 +1,6 @@
 import sharp from 'sharp';
-import { prisma } from './prisma';
-import { uploadFile, deleteFile, getSignedUrl } from './googleCloudStorage';
+import { prisma } from './prisma.js';
+import { uploadFile, deleteFile, getSignedUrl } from './googleCloudStorage.js';
 
 // Thumbnail size configuration
 const THUMBNAIL_WIDTH = 200;

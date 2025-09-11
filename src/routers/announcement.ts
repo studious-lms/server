@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { createTRPCRouter, protectedClassMemberProcedure, protectedTeacherProcedure, protectedProcedure } from "../trpc";
-import { prisma } from "../lib/prisma";
+import { createTRPCRouter, protectedClassMemberProcedure, protectedTeacherProcedure, protectedProcedure } from "../trpc.js";
+import { prisma } from "../lib/prisma.js";
 import { TRPCError } from "@trpc/server";
 
 const AnnouncementSelect = {

@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure, protectedClassMemberProcedure, protectedTeacherProcedure } from "../trpc";
+import { createTRPCRouter, protectedProcedure, protectedClassMemberProcedure, protectedTeacherProcedure } from "../trpc.js";
 import { TRPCError } from "@trpc/server";
-import { prisma } from "../lib/prisma";
-import { uploadFiles, type UploadedFile } from "../lib/fileUpload";
-import { deleteFile } from "../lib/googleCloudStorage";
+import { prisma } from "../lib/prisma.js";
+import { uploadFiles, type UploadedFile } from "../lib/fileUpload.js";
+import { deleteFile } from "../lib/googleCloudStorage.js";
 
 const fileSchema = z.object({
   name: z.string(),

@@ -1,5 +1,5 @@
 import { TRPCError } from '@trpc/server';
-import { handlePrismaError } from './prismaErrorHandler';
+import { handlePrismaError } from './prismaErrorHandler.js';
 
 export async function withPrismaErrorHandling<T>(
   operation: () => Promise<T>,

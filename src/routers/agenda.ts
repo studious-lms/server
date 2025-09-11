@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure } from "../trpc";
-import { prisma } from "../lib/prisma";
+import { createTRPCRouter, protectedProcedure } from "../trpc.js";
+import { prisma } from "../lib/prisma.js";
 import { TRPCError } from "@trpc/server";
 import { addDays, startOfDay, endOfDay } from "date-fns";
 

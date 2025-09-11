@@ -1,10 +1,10 @@
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure, protectedTeacherProcedure } from "../trpc";
+import { createTRPCRouter, protectedProcedure, protectedTeacherProcedure } from "../trpc.js";
 import { TRPCError } from "@trpc/server";
-import { getSignedUrl, deleteFile } from "../lib/googleCloudStorage";
+import { getSignedUrl, deleteFile } from "../lib/googleCloudStorage.js";
 import type { User } from "@prisma/client";
-import { prisma } from "../lib/prisma";
-import { logger } from "../utils/logger";
+import { prisma } from "../lib/prisma.js";
+import { logger } from "../utils/logger.js";
 
 export const fileRouter = createTRPCRouter({
   getSignedUrl: protectedProcedure

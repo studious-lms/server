@@ -1,5 +1,5 @@
-import { createTRPCRouter, protectedProcedure } from "../trpc";
-import { prisma } from "../lib/prisma";
+import { createTRPCRouter, protectedProcedure } from "../trpc.js";
+import { prisma } from "../lib/prisma.js";
 import { z } from "zod";
 
 export const notificationRouter = createTRPCRouter({

@@ -1,18 +1,18 @@
-import { createTRPCRouter } from "../trpc";
-import { classRouter } from "./class";
-import { announcementRouter } from "./announcement";
-import { assignmentRouter } from "./assignment";
-import { userRouter } from "./user";
-import { createCallerFactory } from "../trpc";
+import { createTRPCRouter } from "../trpc.js";
+import { classRouter } from "./class.js";
+import { announcementRouter } from "./announcement.js";
+import { assignmentRouter } from "./assignment.js";
+import { userRouter } from "./user.js";
+import { createCallerFactory } from "../trpc.js";
 import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
-import { sectionRouter } from "./section";
-import { attendanceRouter } from "./attendance";
-import { eventRouter } from "./event";
-import { authRouter } from "./auth";
-import { agendaRouter } from "./agenda";
-import { fileRouter } from "./file";
-import { folderRouter } from "./folder";
-import { notificationRouter } from "./notifications";
+import { sectionRouter } from "./section.js";
+import { attendanceRouter } from "./attendance.js";
+import { eventRouter } from "./event.js";
+import { authRouter } from "./auth.js";
+import { agendaRouter } from "./agenda.js";
+import { fileRouter } from "./file.js";
+import { folderRouter } from "./folder.js";
+import { notificationRouter } from "./notifications.js";
 
 export const appRouter = createTRPCRouter({
   class: classRouter,

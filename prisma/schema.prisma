@@ -81,7 +81,7 @@ model User {
 model UserProfile {
   id String @id @default(uuid())
   userId String @unique
-  user User? @relation(fields: [userId], references: [id])
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
 } 
 
@@ -291,5 +291,5 @@ model Notification {
   receiverId String
   read Boolean @default(false)
   sender User? @relation("SentNotifications", fields: [senderId], references: [id])
-  receiver User @relation("ReceivedNotifications", fields: [receiverId], references: [id])
+  receiver User @relation("ReceivedNotifications", fields: [receiverId], references: [id], onDelete: Cascade)
 }

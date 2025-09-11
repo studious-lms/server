@@ -3,10 +3,32 @@ import { hash } from "bcryptjs";
 import { logger } from "./utils/logger.js";
 
 export async function clearDatabase() {
+    // Delete in order to respect foreign key constraints
+    // Delete notifications first (they reference users)
+    await prisma.notification.deleteMany();
+    
+    // Delete other records that reference users
+    await prisma.submission.deleteMany();
+    await prisma.assignment.deleteMany();
+    await prisma.announcement.deleteMany();
+    await prisma.event.deleteMany();
+    await prisma.attendance.deleteMany();
+    await prisma.file.deleteMany();
+    
+    // Delete class-related records
+    await prisma.section.deleteMany();
+    await prisma.markScheme.deleteMany();
+    await prisma.gradingBoundary.deleteMany();
+    await prisma.folder.deleteMany();
     await prisma.class.deleteMany();
-    await prisma.userProfile.deleteMany();
+    
+    // Delete user-related records
     await prisma.session.deleteMany();
+    await prisma.userProfile.deleteMany();
+    
+    // Finally delete users and schools
     await prisma.user.deleteMany();
+    await prisma.school.deleteMany();
 }
 
 export async function createUser(email: string, password: string, username: string) {

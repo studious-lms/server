@@ -168,25 +168,30 @@ export const classRouter = createTRPCRouter({
         },
       });
 
+
+      if (!classData) {
+        throw new Error('Class not found');
+      }
+
+      const formattedClassData = {
+        ...classData,
+        assignments: classData.assignments.map(assignment => ({
+          ...assignment,
+          late: assignment.dueDate < new Date(),
+          submitted: assignment.submissions.some(submission => submission.studentId === ctx.user?.id),
+          returned: assignment.submissions.some(submission => submission.studentId === ctx.user?.id && submission.returned),
+        })),
+      }
+
       const sections = await prisma.section.findMany({
         where: {
           classId: classId,
         },
       });
 
-      if (!classData) {
-        throw new Error('Class not found');
-      }
-
       return {
         class: {
-          ...classData,
-          assignments: classData.assignments.map(assignment => ({
-            ...assignment,
-            late: assignment.dueDate < new Date(),
-            submitted: assignment.submissions.some(submission => submission.studentId === ctx.user?.id),
-            returned: assignment.submissions.some(submission => submission.studentId === ctx.user?.id && submission.returned),
-          })),
+          ...formattedClassData,
           sections,
         },
       };

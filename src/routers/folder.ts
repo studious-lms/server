@@ -548,7 +548,7 @@ export const folderRouter = createTRPCRouter({
   move: protectedTeacherProcedure
     .input(z.object({
       folderId: z.string(),
-      targetParentFolderId: z.string().optional(),
+      targetParentFolderId: z.string(),
       classId: z.string(),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -646,7 +646,7 @@ export const folderRouter = createTRPCRouter({
       const updatedFolder = await prisma.folder.update({
         where: { id: folderId },
         data: {
-          parentFolderId: targetParentFolderId || null,
+          parentFolderId: targetParentFolderId,
         },
         include: {
           files: {

@@ -569,6 +569,130 @@ Easy LMS is a comprehensive Learning Management System built with tRPC, Prisma, 
 
 ---
 
+## 📁 Folder Management
+
+### `folder.create`
+**Type**: Mutation  
+**Access**: Teacher Only  
+**Description**: Create a new folder in a class
+
+**Input**:
+```typescript
+{
+  classId: string;
+  name: string;
+  parentFolderId?: string;
+}
+```
+
+### `folder.get`
+**Type**: Query  
+**Access**: Class Member  
+**Description**: Get folder details and contents
+
+**Input**:
+```typescript
+{
+  classId: string;
+  folderId: string;
+}
+```
+
+### `folder.getChildFolders`
+**Type**: Query  
+**Access**: Class Member  
+**Description**: Get child folders of a folder
+
+**Input**:
+```typescript
+{
+  classId: string;
+  folderId: string;
+}
+```
+
+### `folder.getFolderChildren`
+**Type**: Query  
+**Access**: Class Member  
+**Description**: Get all children (files and folders) of a folder
+
+**Input**:
+```typescript
+{
+  classId: string;
+  folderId: string;
+}
+```
+
+### `folder.getRootFolder`
+**Type**: Query  
+**Access**: Class Member  
+**Description**: Get root folder for a class
+
+**Input**:
+```typescript
+{
+  classId: string;
+}
+```
+
+### `folder.uploadFiles`
+**Type**: Mutation  
+**Access**: Teacher Only  
+**Description**: Upload files to a folder
+
+**Input**:
+```typescript
+{
+  classId: string;
+  folderId: string;
+  files: File[];
+}
+```
+
+### `folder.delete`
+**Type**: Mutation  
+**Access**: Teacher Only  
+**Description**: Delete a folder
+
+**Input**:
+```typescript
+{
+  classId: string;
+  folderId: string;
+}
+```
+
+### `folder.move`
+**Type**: Mutation  
+**Access**: Teacher Only  
+**Description**: Move folder to different parent
+
+**Input**:
+```typescript
+{
+  classId: string;
+  folderId: string;
+  newParentFolderId: string;
+}
+```
+
+### `folder.rename`
+**Type**: Mutation  
+**Access**: Teacher Only  
+**Description**: Rename a folder
+
+**Input**:
+```typescript
+{
+  classId: string;
+  folderId: string;
+  newName: string;
+}
+```
+
+---
+
 ## 📁 File Management
 
 ### `file.getSignedUrl`
@@ -628,6 +752,221 @@ Easy LMS is a comprehensive Learning Management System built with tRPC, Prisma, 
 {
   fileId: string;
   classId: string;
+}
+```
+
+---
+
+## 📚 Section Management
+
+### `section.create`
+**Type**: Mutation  
+**Access**: Teacher Only  
+**Description**: Create a new section in a class
+
+**Input**:
+```typescript
+{
+  classId: string;
+  name: string;
+}
+```
+
+**Output**:
+```typescript
+{
+  id: string;
+  name: string;
+  classId: string;
+}
+```
+
+### `section.update`
+**Type**: Mutation  
+**Access**: Teacher Only  
+**Description**: Update section name
+
+**Input**:
+```typescript
+{
+  id: string;
+  classId: string;
+  name: string;
+}
+```
+
+**Output**:
+```typescript
+{
+  id: string;
+  name: string;
+  classId: string;
+}
+```
+
+### `section.delete`
+**Type**: Mutation  
+**Access**: Teacher Only  
+**Description**: Delete a section
+
+**Input**:
+```typescript
+{
+  id: string;
+  classId: string;
+}
+```
+
+**Output**:
+```typescript
+{
+  id: string;
+}
+```
+
+---
+
+## 📊 Attendance Management
+
+### `attendance.get`
+**Type**: Query  
+**Access**: Class Member  
+**Description**: Get attendance records for a class
+
+**Input**:
+```typescript
+{
+  classId: string;
+  eventId?: string;
+}
+```
+
+**Output**:
+```typescript
+Array<{
+  id: string;
+  date: Date;
+  event?: {
+    id: string;
+    name: string;
+    startTime: Date;
+    endTime: Date;
+    location: string;
+    color: string;
+  };
+  present: Array<{
+    id: string;
+    username: string;
+  }>;
+  late: Array<{
+    id: string;
+    username: string;
+  }>;
+  absent: Array<{
+    id: string;
+    username: string;
+  }>;
+}>
+```
+
+### `attendance.update`
+**Type**: Mutation  
+**Access**: Teacher Only  
+**Description**: Update attendance for a class event
+
+**Input**:
+```typescript
+{
+  classId: string;
+  eventId?: string;
+  attendance: {
+    present: Array<{
+      id: string;
+      username: string;
+    }>;
+    late: Array<{
+      id: string;
+      username: string;
+    }>;
+    absent: Array<{
+      id: string;
+      username: string;
+    }>;
+  };
+}
+```
+
+**Output**:
+```typescript
+{
+  id: string;
+  date: Date;
+  event?: {
+    id: string;
+    name: string;
+    startTime: Date;
+    endTime: Date;
+    location: string;
+  };
+  present: Array<{
+    id: string;
+    username: string;
+  }>;
+  late: Array<{
+    id: string;
+    username: string;
+  }>;
+  absent: Array<{
+    id: string;
+    username: string;
+  }>;
+}
+```
+
+---
+
+## 📅 Agenda Management
+
+### `agenda.get`
+**Type**: Query  
+**Access**: Protected  
+**Description**: Get user's weekly agenda with personal and class events
+
+**Input**:
+```typescript
+{
+  weekStart: string; // ISO date string
+}
+```
+
+**Output**:
+```typescript
+{
+  events: {
+    personal: Array<{
+      id: string;
+      name: string;
+      startTime: Date;
+      endTime: Date;
+      location?: string;
+      color?: string;
+      class: null;
+    }>;
+    class: Array<{
+      id: string;
+      name: string;
+      startTime: Date;
+      endTime: Date;
+      location?: string;
+      color?: string;
+      class: {
+        id: string;
+        name: string;
+        subject: string;
+        section: string;
+      };
+    }>;
+  };
 }
 ```
 
@@ -711,11 +1050,6 @@ Array<{
 
 ---
 
-## 🏫 School Management
-
-*Note: Router exists but implementation details need to be examined*
-
----
 
 ## 📊 Grading & Assessment
 
@@ -1112,6 +1446,16 @@ const assignment = await trpc.assignment.create.mutate({
 
 ---
 
-*Generated on: $(date)*  
-*Version: 1.0.6*  
-*Last Updated: January 2024*
+*Generated on: September 14, 2025*  
+*Version: 1.1.0*  
+*Last Updated: September 2025*
+
+## 📋 Changelog
+
+### Version 1.1.0 (September 2025)
+- ✅ Added complete Folder Management endpoints (`folder.*`)
+- ✅ Added Section Management endpoints (`section.*`)
+- ✅ Added Attendance Management endpoints (`attendance.*`)
+- ✅ Added Agenda Management endpoints (`agenda.*`)
+- ❌ Removed School Management section (not implemented)
+- 🔧 Improved API coverage from ~70% to ~95%

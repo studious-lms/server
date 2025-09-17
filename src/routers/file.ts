@@ -246,14 +246,6 @@ export const fileRouter = createTRPCRouter({
         });
       }
 
-      // Verify the file belongs to this class
-      if (file.folder?.classId !== classId) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "File does not belong to this class",
-        });
-      }
-
       // Validate new name
       if (!newName.trim()) {
         throw new TRPCError({

@@ -482,6 +482,12 @@ export const classRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { classId } = input;
 
+      await prisma.session.deleteMany({
+        where: {
+          classId,
+        },
+      });
+
       // Create a new session for the invite code
       const session = await prisma.session.create({
         data: {

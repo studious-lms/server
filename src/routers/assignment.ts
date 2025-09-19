@@ -75,6 +75,7 @@ const updateSubmissionSchema = z.object({
   newAttachments: z.array(fileSchema).optional(),
   existingFileIds: z.array(z.string()).optional(),
   removedAttachments: z.array(z.string()).optional(),
+  feedback: z.string().optional(),
   rubricGrades: z.array(z.object({
     criteriaId: z.string(),
     selectedLevelId: z.string(),
@@ -1130,7 +1131,7 @@ export const assignmentRouter = createTRPCRouter({
         });
       }
 
-      const { submissionId, return: returnSubmission, gradeReceived, newAttachments, existingFileIds, removedAttachments, rubricGrades } = input;
+      const { submissionId, return: returnSubmission, gradeReceived, newAttachments, existingFileIds, removedAttachments, rubricGrades, feedback } = input;
 
       const submission = await prisma.submission.findFirst({
         where: {
@@ -1285,6 +1286,7 @@ export const assignmentRouter = createTRPCRouter({
         data: {
           ...(gradeReceived !== undefined && { gradeReceived }),
           ...(rubricGrades && { rubricState: JSON.stringify(rubricGrades) }),
+          ...(feedback && { teacherComments: feedback }),
           ...(removedAttachments && removedAttachments.length > 0 && {
             annotations: {
               deleteMany: {
@@ -1292,6 +1294,7 @@ export const assignmentRouter = createTRPCRouter({
               },
             },
           }),
+          ...(returnSubmission as unknown as boolean && { returned: returnSubmission }),
         },
         include: {
           attachments: {
@@ -1734,6 +1737,45 @@ export const assignmentRouter = createTRPCRouter({
           gradingBoundary: gradingBoundaryId ? {
             connect: { id: gradingBoundaryId },
           } : {
+            disconnect: true,
+          },
+        },
+        include: {
+          attachments: true,
+          section: true,
+          teacher: true,
+          eventAttached: true,
+          gradingBoundary: true,
+        },
+      });
+
+      return updatedAssignment;
+    }),
+  detachGradingBoundary: protectedTeacherProcedure
+    .input(z.object({
+      classId: z.string(),
+      assignmentId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { assignmentId } = input;
+
+      const assignment = await prisma.assignment.findFirst({
+        where: {
+          id: assignmentId,
+        },
+      });
+
+      if (!assignment) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Assignment not found",
+        });
+      }
+
+      const updatedAssignment = await prisma.assignment.update({
+        where: { id: assignmentId },
+        data: {
+          gradingBoundary: {
             disconnect: true,
           },
         },

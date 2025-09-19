@@ -182,6 +182,7 @@ export const folderRouter = createTRPCRouter({
             select: {
               id: true,
               name: true,
+              color: true,
               _count: {
                 select: {
                   files: true,

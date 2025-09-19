@@ -54,6 +54,7 @@ export const sectionRouter = createTRPCRouter({
       const section = await prisma.section.create({
         data: {
           name: input.name,
+          order: 0,
           class: {
             connect: { id: input.classId },
           },
@@ -62,6 +63,40 @@ export const sectionRouter = createTRPCRouter({
           }),
         },
       });
+
+      // find all root items in the class and reorder them
+      const sections = await prisma.section.findMany({
+        where: {
+          classId: input.classId,
+        },
+      });
+
+      const assignments = await prisma.assignment.findMany({
+        where: {
+          classId: input.classId,
+          sectionId: null,
+        },
+      });
+
+      const stack = [...sections, ...assignments].sort((a, b) => (a.order || 0) - (b.order || 0)).map((item, index) => ({
+        id: item.id,
+        order: index + 1,
+      })).map((item) => ({
+        where: { id: item.id },
+        data: { order: item.order },
+      }));
+
+      // Update sections and assignments with their new order
+      await Promise.all([
+        ...stack.filter(item => sections.some(s => s.id === item.where.id))
+          .map(({ where, data }) => 
+            prisma.section.update({ where, data })
+          ),
+        ...stack.filter(item => assignments.some(a => a.id === item.where.id))
+          .map(({ where, data }) => 
+            prisma.assignment.update({ where, data })
+          )
+      ]);
 
       return section;
     }),

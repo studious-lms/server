@@ -101,6 +101,42 @@ export const assignmentRouter = createTRPCRouter({
       return assignment;
     }),
 
+    move: protectedTeacherProcedure
+    .input(z.object({
+      id: z.string(),
+      classId: z.string(),
+      targetSectionId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { id, targetSectionId,  } = input;
+
+
+      const assignments = await prisma.assignment.findMany({
+        where: { sectionId: targetSectionId },
+      });
+
+      const stack = assignments.sort((a, b) => (a.order || 0) - (b.order || 0)).map((assignment, index) => ({
+        id: assignment.id,
+        order: index + 1,
+      })).map((assignment) => ({
+        where: { id: assignment.id },
+        data: { order: assignment.order },
+      }));
+
+      await Promise.all(
+        stack.map(({ where, data }) =>
+          prisma.assignment.update({ where, data })
+        )
+      );
+
+      const assignment = await prisma.assignment.update({
+        where: { id },
+        data: { sectionId: targetSectionId, order: 0 },
+      });
+
+      return assignment;
+    }),
+
   create: protectedProcedure
     .input(createAssignmentSchema)
     .mutation(async ({ ctx, input }) => {
@@ -149,16 +185,35 @@ export const assignmentRouter = createTRPCRouter({
       }
       console.log(markSchemeId, gradingBoundaryId);
 
+      // find all assignments in the section it is in (or none) and reorder them
+      const assignments = await prisma.assignment.findMany({
+        where: {
+          classId: classId,
+          ...(sectionId && {
+            sectionId: sectionId,
+          }),
+        },
+      });
+
+      const stack = assignments.sort((a, b) => (a.order || 0) - (b.order || 0)).map((assignment, index) => ({
+        id: assignment.id,
+        order: index + 1,
+      })).map((assignment) => ({
+        where: { id: assignment.id },
+        data: { order: assignment.order },
+      }));
+
       // Create assignment with submissions for all students
       const assignment = await prisma.assignment.create({
         data: {
           title,
           instructions,
           dueDate: new Date(dueDate),
-          maxGrade: markSchemeId ?  computedMaxGrade : maxGrade,
+          maxGrade: markSchemeId ? computedMaxGrade : maxGrade,
           graded,
           weight,
           type,
+          order: 0,
           inProgress: inProgress || false,
           class: {
             connect: { id: classId }
@@ -173,7 +228,7 @@ export const assignmentRouter = createTRPCRouter({
               connect: { id: markSchemeId }
             }
           }),
-          ...(gradingBoundaryId && {  
+          ...(gradingBoundaryId && {
             gradingBoundary: {
               connect: { id: gradingBoundaryId }
             }
@@ -225,6 +280,12 @@ export const assignmentRouter = createTRPCRouter({
           }
         }
       });
+
+      await Promise.all(
+        stack.map(({ where, data }) =>
+          prisma.assignment.update({ where, data })
+        )
+      );
 
       // Upload files if provided
       let uploadedFiles: UploadedFile[] = [];
@@ -495,7 +556,7 @@ export const assignmentRouter = createTRPCRouter({
         try {
           // Delete the main file
           await deleteFile(file.path);
-          
+
           // Delete thumbnail if it exists
           if (file.thumbnail) {
             await deleteFile(file.thumbnail.path);
@@ -510,7 +571,7 @@ export const assignmentRouter = createTRPCRouter({
         where: { id },
       });
 
-      return { 
+      return {
         id,
       };
     }),
@@ -612,7 +673,7 @@ export const assignmentRouter = createTRPCRouter({
           id: true,
           name: true,
         },
-      }); 
+      });
 
       return { ...assignment, sections };
     }),
@@ -930,7 +991,7 @@ export const assignmentRouter = createTRPCRouter({
 
       // Delete removed attachments if any
       if (removedAttachments && removedAttachments.length > 0) {
-        const filesToDelete = submission.attachments.filter((file) => 
+        const filesToDelete = submission.attachments.filter((file) =>
           removedAttachments.includes(file.id)
         );
 
@@ -939,7 +1000,7 @@ export const assignmentRouter = createTRPCRouter({
           try {
             // Delete the main file
             await deleteFile(file.path);
-            
+
             // Delete thumbnail if it exists
             if (file.thumbnail?.path) {
               await deleteFile(file.thumbnail.path);
@@ -1198,7 +1259,7 @@ export const assignmentRouter = createTRPCRouter({
 
       // Delete removed attachments if any
       if (removedAttachments && removedAttachments.length > 0) {
-        const filesToDelete = submission.annotations.filter((file) => 
+        const filesToDelete = submission.annotations.filter((file) =>
           removedAttachments.includes(file.id)
         );
 
@@ -1207,7 +1268,7 @@ export const assignmentRouter = createTRPCRouter({
           try {
             // Delete the main file
             await deleteFile(file.path);
-            
+
             // Delete thumbnail if it exists
             if (file.thumbnail?.path) {
               await deleteFile(file.thumbnail.path);
@@ -1592,7 +1653,7 @@ export const assignmentRouter = createTRPCRouter({
 
       return updatedAssignment;
     }),
-    detachMarkScheme: protectedTeacherProcedure
+  detachMarkScheme: protectedTeacherProcedure
     .input(z.object({
       assignmentId: z.string(),
     }))
@@ -1611,7 +1672,7 @@ export const assignmentRouter = createTRPCRouter({
           message: "Assignment not found",
         });
       }
-      
+
       const updatedAssignment = await prisma.assignment.update({
         where: { id: assignmentId },
         data: {
@@ -1630,7 +1691,7 @@ export const assignmentRouter = createTRPCRouter({
 
       return updatedAssignment;
     }),
-    attachGradingBoundary: protectedTeacherProcedure
+  attachGradingBoundary: protectedTeacherProcedure
     .input(z.object({
       assignmentId: z.string(),
       gradingBoundaryId: z.string().nullable(),

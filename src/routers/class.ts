@@ -128,6 +128,7 @@ export const classRouter = createTRPCRouter({
               dueDate: true,
               createdAt: true,
               weight: true,
+              order: true,
               graded: true,
               maxGrade: true,
               instructions: true,
@@ -172,7 +173,7 @@ export const classRouter = createTRPCRouter({
       if (!classData) {
         throw new Error('Class not found');
       }
-
+      
       const formattedClassData = {
         ...classData,
         assignments: classData.assignments.map(assignment => ({

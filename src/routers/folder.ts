@@ -324,6 +324,7 @@ export const folderRouter = createTRPCRouter({
             select: {
               id: true,
               name: true,
+              color: true,
               _count: {
                 select: {
                   files: true,
@@ -398,6 +399,7 @@ export const folderRouter = createTRPCRouter({
             select: {
               id: true,
               name: true,
+              color: true,
               files: {
                 select: {
                   id: true,

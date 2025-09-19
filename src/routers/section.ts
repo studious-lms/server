@@ -6,12 +6,14 @@ import { prisma } from "../lib/prisma.js";
 const createSectionSchema = z.object({
   classId: z.string(),
   name: z.string(),
+  color: z.string().optional(),
 });
 
 const updateSectionSchema = z.object({
   id: z.string(),
   classId: z.string(),
   name: z.string(),
+  color: z.string().optional(),
 });
 
 const deleteSectionSchema = z.object({
@@ -55,6 +57,9 @@ export const sectionRouter = createTRPCRouter({
           class: {
             connect: { id: input.classId },
           },
+          ...(input.color && {
+            color: input.color,
+          }),
         },
       });
 
@@ -94,10 +99,56 @@ export const sectionRouter = createTRPCRouter({
         where: { id: input.id },
         data: {
           name: input.name,
+          ...(input.color && {
+            color: input.color,
+          }),
         },
       });
 
       return section;
+    }),
+
+  reOrder: protectedProcedure
+    .input(z.object({
+      id: z.string(),
+      classId: z.string(),
+      order: z.number(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.user) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "User must be authenticated",
+        });
+      }
+
+      // Verify user is a teacher of the class
+      const classData = await prisma.class.findFirst({
+        where: {
+          id: input.classId,
+          teachers: {
+            some: {
+              id: ctx.user.id,
+            },
+          },
+        },
+      });
+
+      if (!classData) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Class not found or you are not a teacher",
+        });
+      }
+
+      await prisma.section.update({
+        where: { id: input.id },
+        data: {
+          order: input.order,
+        },
+      });
+
+      return { id: input.id };
     }),
 
   delete: protectedProcedure

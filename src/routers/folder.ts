@@ -14,6 +14,7 @@ const fileSchema = z.object({
 const createFolderSchema = z.object({
   name: z.string(),
   parentFolderId: z.string().optional(),
+  color: z.string().optional(),
 });
 
 const uploadFilesToFolderSchema = z.object({
@@ -29,7 +30,7 @@ export const folderRouter = createTRPCRouter({
   create: protectedTeacherProcedure
     .input(createFolderSchema)
     .mutation(async ({ ctx, input }) => {
-      const { classId, name } = input;
+      const { classId, name, color } = input;
       let parentFolderId = input.parentFolderId || null;
 
       if (!ctx.user) {
@@ -75,6 +76,9 @@ export const folderRouter = createTRPCRouter({
               class: {
                 connect: { id: classId },
               },
+              ...(color && {
+                color: color,
+              }),
             },
           });
         }
@@ -103,6 +107,9 @@ export const folderRouter = createTRPCRouter({
             parentFolder: {
               connect: { id: parentFolderId },
             },
+          }),
+          ...(color && {
+            color: color,
           }),
         },
         include: {
@@ -682,14 +689,15 @@ export const folderRouter = createTRPCRouter({
       return updatedFolder;
     }),
 
-  rename: protectedTeacherProcedure
+  update: protectedTeacherProcedure
     .input(z.object({
       folderId: z.string(),
-      newName: z.string(),
+      name: z.string(),
+      color: z.string().optional(),
       classId: z.string(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const { folderId, newName, classId } = input;
+      const { folderId, name, color, classId } = input;
 
       // Get the folder
       const folder = await prisma.folder.findFirst({
@@ -706,7 +714,7 @@ export const folderRouter = createTRPCRouter({
       }
 
       // Validate new name
-      if (!newName.trim()) {
+      if (!name.trim()) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Folder name cannot be empty",
@@ -717,7 +725,10 @@ export const folderRouter = createTRPCRouter({
       const updatedFolder = await prisma.folder.update({
         where: { id: folderId },
         data: {
-          name: newName.trim(),
+          name: name.trim(),
+          ...(color && {
+            color: color,
+          }),
         },
         include: {
           files: {

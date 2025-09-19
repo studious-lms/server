@@ -132,6 +132,7 @@ model Folder {
   childFolders Folder[] @relation("ParentChildFolders")
   parentFolder Folder? @relation("ParentChildFolders", fields: [parentFolderId], references: [id])
   parentFolderId String?
+  color String? @default("#3B82F6")
   class Class? @relation("ClassFiles", fields: [classId], references: [id])
   classId String? @unique
 }
@@ -194,6 +195,7 @@ model Assignment {
   eventId       String?
   markScheme    MarkScheme? @relation(fields: [markSchemeId], references: [id], onDelete: Cascade)
   markSchemeId  String?
+  order         Int?
   gradingBoundary GradingBoundary? @relation(fields: [gradingBoundaryId], references: [id], onDelete: Cascade)
   gradingBoundaryId String?
 }
@@ -227,6 +229,7 @@ model Submission {
   gradeReceived Int?
 
   rubricState String?
+  teacherComments String?
 
   submittedAt DateTime?
   submitted   Boolean? @default(false)
@@ -239,6 +242,8 @@ model Section {
   classId   String
   class     Class @relation(fields: [classId], references: [id], onDelete: Cascade)
   assignments Assignment[]
+  color String? @default("#3B82F6")
+  order Int?
 }
 
 model Session {

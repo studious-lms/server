@@ -84,6 +84,23 @@ const updateSubmissionSchema = z.object({
 });
 
 export const assignmentRouter = createTRPCRouter({
+  order: protectedTeacherProcedure
+    .input(z.object({
+      id: z.string(),
+      classId: z.string(),
+      order: z.number(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { id, order } = input;
+
+      const assignment = await prisma.assignment.update({
+        where: { id },
+        data: { order },
+      });
+
+      return assignment;
+    }),
+
   create: protectedProcedure
     .input(createAssignmentSchema)
     .mutation(async ({ ctx, input }) => {

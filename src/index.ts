@@ -9,6 +9,7 @@ import { appRouter } from './routers/_app.js';
 import { createTRPCContext, createCallerFactory } from './trpc.js';
 import { logger } from './utils/logger.js';
 import { setupSocketHandlers } from './socket/handlers.js';
+import { bucket } from './lib/googleCloudStorage.js';
 
 dotenv.config();
 
@@ -16,9 +17,54 @@ const app = express();
 
 // CORS middleware
 app.use(cors({
-  origin: [process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000', 'http://localhost:3000'],
+  origin: [
+    'http://localhost:3000',  // Frontend development server
+    'http://localhost:3001',  // Server port
+    'http://127.0.0.1:3000',  // Alternative localhost
+    'http://127.0.0.1:3001',  // Alternative localhost
+    process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  ],
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-user'],
+  optionsSuccessStatus: 200
 }));
+
+// Handle preflight OPTIONS requests
+app.options('*', (req, res) => {
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:3001', 
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:3001',
+    process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  ];
+  
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  } else {
+    res.header('Access-Control-Allow-Origin', 'http://localhost:3000');
+  }
+  
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, x-user');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.sendStatus(200);
+});
+
+// CORS debugging middleware
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS' || req.path.includes('trpc')) {
+    logger.info('CORS Request', {
+      method: req.method,
+      path: req.path,
+      origin: req.headers.origin,
+      userAgent: req.headers['user-agent']
+    });
+  }
+  next();
+});
 
 // Response time logging middleware
 app.use((req, res, next) => {
@@ -41,10 +87,16 @@ const httpServer = createServer(app);
 // Setup Socket.IO
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
-    methods: ['GET', 'POST'],
+    origin: [
+      'http://localhost:3000',  // Frontend development server
+      'http://localhost:3001',  // Server port
+      'http://127.0.0.1:3000',  // Alternative localhost
+      'http://127.0.0.1:3001',  // Alternative localhost
+      process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    ],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true,
-    allowedHeaders: ['Access-Control-Allow-Origin']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Access-Control-Allow-Origin', 'x-user']
   },
   transports: ['websocket', 'polling'],
   pingTimeout: 60000,
@@ -61,6 +113,50 @@ io.engine.on('connection_error', (err: Error) => {
 
 // Setup socket handlers
 setupSocketHandlers(io);
+
+// File serving endpoint for secure file access
+app.get('/api/files/:filePath', async (req, res) => {
+  try {
+    const filePath = decodeURIComponent(req.params.filePath);
+    console.log('File request:', { filePath, originalPath: req.params.filePath });
+    
+    // Get file from Google Cloud Storage
+    const file = bucket.file(filePath);
+    const [exists] = await file.exists();
+    
+    console.log('File exists:', exists, 'for path:', filePath);
+    
+    if (!exists) {
+      return res.status(404).json({ error: 'File not found', filePath });
+    }
+    
+    // Get file metadata
+    const [metadata] = await file.getMetadata();
+    
+    // Set appropriate headers
+    res.set({
+      'Content-Type': metadata.contentType || 'application/octet-stream',
+      'Content-Length': metadata.size,
+      'Cache-Control': 'public, max-age=31536000', // 1 year cache
+      'ETag': metadata.etag,
+    });
+    
+    // Stream file to response
+    const stream = file.createReadStream();
+    stream.pipe(res);
+    
+    stream.on('error', (error) => {
+      console.error('Error streaming file:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Error streaming file' });
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error serving file:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 // Create caller
 const createCaller = createCallerFactory(appRouter);
@@ -91,4 +187,15 @@ logger.info('Configurations', {
   PORT: process.env.PORT,
   NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
   LOG_MODE: process.env.LOG_MODE,
+});
+
+// Log CORS configuration
+logger.info('CORS Configuration', {
+  allowedOrigins: [
+    'http://localhost:3000',
+    'http://localhost:3001', 
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:3001',
+    process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  ]
 });

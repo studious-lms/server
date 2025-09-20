@@ -11,6 +11,13 @@ export interface FileData {
   data: string; // base64 encoded file data
 }
 
+export interface DirectFileData {
+  name: string;
+  type: string;
+  size: number;
+  // No data field - for direct file uploads
+}
+
 export interface UploadedFile {
   id: string;
   name: string;
@@ -35,8 +42,25 @@ export async function uploadFile(
   assignmentId?: string
 ): Promise<UploadedFile> {
   try {
+    // Validate file extension matches MIME type
+    const fileExtension = file.name.split('.').pop()?.toLowerCase();
+    const mimeType = file.type.toLowerCase();
+    
+    const extensionMimeMap: Record<string, string[]> = {
+      'jpg': ['image/jpeg'],
+      'jpeg': ['image/jpeg'],
+      'png': ['image/png'],
+      'gif': ['image/gif'],
+      'webp': ['image/webp']
+    };
+    
+    if (fileExtension && extensionMimeMap[fileExtension]) {
+      if (!extensionMimeMap[fileExtension].includes(mimeType)) {
+        throw new Error(`File extension .${fileExtension} does not match MIME type ${mimeType}`);
+      }
+    }
+    
     // Create a unique filename
-    const fileExtension = file.name.split('.').pop();
     const uniqueFilename = `${uuidv4()}.${fileExtension}`;
     
   //   // Construct the full path
@@ -50,9 +74,10 @@ export async function uploadFile(
   //   // Generate and store thumbnail if supported
     let thumbnailId: string | undefined;
     try {
-  //     // Convert base64 to buffer for thumbnail generation
-      const base64Data = file.data.split(',')[1];
-      const fileBuffer = Buffer.from(base64Data, 'base64');
+  //         // Convert base64 to buffer for thumbnail generation
+    // Handle both data URI format (data:image/jpeg;base64,...) and raw base64
+    const base64Data = file.data.includes(',') ? file.data.split(',')[1] : file.data;
+    const fileBuffer = Buffer.from(base64Data, 'base64');
       
   //     // Generate thumbnail directly from buffer
       const thumbnailBuffer = await generateMediaThumbnail(fileBuffer, file.type);
@@ -79,6 +104,7 @@ export async function uploadFile(
       }
     } catch (error) {
       console.warn('Failed to generate thumbnail:', error);
+      // Continue without thumbnail - this is not a critical failure
     }
     
     // Create file record in database

@@ -1,3 +1,5 @@
+import dotenv from 'dotenv';
+dotenv.config();
 import { Storage } from '@google-cloud/storage';
 import { TRPCError } from '@trpc/server';
 
@@ -9,7 +11,7 @@ const storage = new Storage({
   },
 });
 
-const bucket = storage.bucket(process.env.GOOGLE_CLOUD_BUCKET_NAME || '');
+export const bucket = storage.bucket(process.env.GOOGLE_CLOUD_BUCKET_NAME!);
 
 // Short expiration time for signed URLs (5 minutes)
 const SIGNED_URL_EXPIRATION = 5 * 60 * 1000;
@@ -60,13 +62,20 @@ export async function uploadFile(
  * @param filePath The path of the file in the bucket
  * @returns The signed URL
  */
-export async function getSignedUrl(filePath: string): Promise<string> {
+export async function getSignedUrl(filePath: string, action: 'read' | 'write' = 'read', contentType?: string): Promise<string> {
   try {
-    const [url] = await bucket.file(filePath).getSignedUrl({
+    const options: any = {
       version: 'v4',
-      action: 'read',
+      action: action,
       expires: Date.now() + SIGNED_URL_EXPIRATION,
-    });
+    };
+
+    // For write operations, add content type if provided
+    if (action === 'write' && contentType) {
+      options.contentType = contentType;
+    }
+
+    const [url] = await bucket.file(filePath).getSignedUrl(options);
     return url;
   } catch (error) {
     console.error('Error getting signed URL:', error);

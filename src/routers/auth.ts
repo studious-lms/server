@@ -238,7 +238,15 @@ export const authRouter = createTRPCRouter({
             id: true,
             email: true,
             role: true,
-            schoolId: true,
+            profile: {
+              select: {
+                displayName: true,
+                bio: true,
+                location: true,
+                website: true,
+                profilePicture: true,
+            },
+            },
           },
         });
 

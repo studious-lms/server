@@ -54,6 +54,7 @@ export const classRouter = createTRPCRouter({
                 id: true,
                 title: true,
                 type: true,
+                dueDate: true,
               },
             },
           },

@@ -228,14 +228,16 @@ export const userRouter = createTRPCRouter({
         const uniqueFilename = `${ctx.user.id}-${Date.now()}.${fileExtension}`;
         const filePath = `users/${ctx.user.id}/profile/${uniqueFilename}`;
 
-        // Generate signed URL for direct upload (write permission)
-        const uploadUrl = await getSignedUrl(filePath, 'write', input.fileType);
+        // Generate backend proxy upload URL instead of direct GCS signed URL
+        const backendUrl = process.env.BACKEND_URL || 'http://localhost:3001';
+        const uploadUrl = `${backendUrl}/api/upload/${encodeURIComponent(filePath)}`;
 
         logger.info('Generated upload URL', {
           userId: ctx.user.id,
           filePath,
           fileName: uniqueFilename,
-          fileType: input.fileType
+          fileType: input.fileType,
+          uploadUrl
         });
 
         return {

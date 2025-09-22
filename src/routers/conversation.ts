@@ -181,7 +181,7 @@ export const conversationRouter = createTRPCRouter({
       // Verify all members exist
       const members = await prisma.user.findMany({
         where: {
-          id: {
+          username: {
             in: memberIds,
           },
         },

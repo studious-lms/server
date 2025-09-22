@@ -547,6 +547,18 @@ export const classRouter = createTRPCRouter({
               title: true,
               maxGrade: true,
               weight: true,
+              markSchemeId: true,
+              markScheme: {
+                select: {
+                  structured: true,
+                }
+              },
+              gradingBoundaryId: true,
+              gradingBoundary: {
+                select: {
+                  structured: true,
+                }
+              },
             }
           },
         }

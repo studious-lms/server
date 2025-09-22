@@ -187,6 +187,7 @@ export const conversationRouter = createTRPCRouter({
         },
         select: {
           id: true,
+          username: true,
         },
       });
 
@@ -209,7 +210,7 @@ export const conversationRouter = createTRPCRouter({
                 role: type === 'GROUP' ? 'ADMIN' : 'MEMBER',
               },
               ...memberIds.map((memberId) => ({
-                userId: memberId,
+                userId: members.find((member) => member.username === memberId)!.id,
                 role: 'MEMBER' as const,
               })),
             ],

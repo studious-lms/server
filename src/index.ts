@@ -22,6 +22,8 @@ app.use(cors({
     'http://localhost:3001',  // Server port
     'http://127.0.0.1:3000',  // Alternative localhost
     'http://127.0.0.1:3001',  // Alternative localhost
+    'https://www.studious.sh',  // Production frontend
+    'https://studious.sh',     // Production frontend (without www)
     process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
   ],
   credentials: true,
@@ -37,6 +39,8 @@ app.options('*', (req, res) => {
     'http://localhost:3001', 
     'http://127.0.0.1:3000',
     'http://127.0.0.1:3001',
+    'https://www.studious.sh',  // Production frontend
+    'https://studious.sh',     // Production frontend (without www)
     process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
   ];
   
@@ -92,6 +96,8 @@ const io = new Server(httpServer, {
       'http://localhost:3001',  // Server port
       'http://127.0.0.1:3000',  // Alternative localhost
       'http://127.0.0.1:3001',  // Alternative localhost
+      'https://www.studious.sh',  // Production frontend
+      'https://studious.sh',     // Production frontend (without www)
       process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],

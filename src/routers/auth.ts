@@ -197,6 +197,7 @@ export const authRouter = createTRPCRouter({
       return { success: true };
     }),
 
+
   check: protectedProcedure
     .query(async ({ ctx }) => {
       if (!ctx.user) {

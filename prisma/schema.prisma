@@ -76,6 +76,11 @@ model User {
   school School? @relation(fields: [schoolId], references: [id])
   schoolId String?
 
+  // Chat relations
+  conversationMemberships ConversationMember[]
+  sentMessages Message[] @relation("SentMessages")
+  mentions Mention[] @relation("UserMentions")
+
 }
 
 model UserProfile {
@@ -306,4 +311,66 @@ model Notification {
   read Boolean @default(false)
   sender User? @relation("SentNotifications", fields: [senderId], references: [id])
   receiver User @relation("ReceivedNotifications", fields: [receiverId], references: [id], onDelete: Cascade)
+}
+
+enum ConversationType {
+  DM
+  GROUP
+}
+
+enum ConversationRole {
+  ADMIN
+  MEMBER
+}
+
+model Conversation {
+  id String @id @default(uuid())
+  type ConversationType
+  name String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  displayInChat Boolean @default(true)
+  
+  members ConversationMember[]
+  messages Message[]
+}
+
+model ConversationMember {
+  id String @id @default(uuid())
+  userId String
+  conversationId String
+  role ConversationRole @default(MEMBER)
+  joinedAt DateTime @default(now())
+  lastViewedAt DateTime? // When user last viewed this conversation
+  lastViewedMentionAt DateTime? // When user last viewed mentions in this conversation
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, conversationId])
+}
+
+model Message {
+  id String @id @default(uuid())
+  content String
+  senderId String
+  conversationId String
+  createdAt DateTime @default(now())
+  
+  sender User @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  mentions Mention[]
+}
+
+model Mention {
+  id String @id @default(uuid())
+  messageId String
+  userId String
+  createdAt DateTime @default(now())
+  
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user User @relation("UserMentions", fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([messageId, userId])
 }

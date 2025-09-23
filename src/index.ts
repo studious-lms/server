@@ -22,6 +22,8 @@ app.use(cors({
     'http://localhost:3001',  // Server port
     'http://127.0.0.1:3000',  // Alternative localhost
     'http://127.0.0.1:3001',  // Alternative localhost
+    'https://www.studious.sh',  // Production frontend
+    'https://studious.sh',     // Production frontend (without www)
     process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
   ],
   credentials: true,
@@ -37,6 +39,8 @@ app.options('*', (req, res) => {
     'http://localhost:3001', 
     'http://127.0.0.1:3000',
     'http://127.0.0.1:3001',
+    'https://www.studious.sh',  // Production frontend
+    'https://studious.sh',     // Production frontend (without www)
     process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
   ];
   
@@ -92,6 +96,8 @@ const io = new Server(httpServer, {
       'http://localhost:3001',  // Server port
       'http://127.0.0.1:3000',  // Alternative localhost
       'http://127.0.0.1:3001',  // Alternative localhost
+      'https://www.studious.sh',  // Production frontend
+      'https://studious.sh',     // Production frontend (without www)
       process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -157,6 +163,79 @@ app.get('/api/files/:filePath', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// File upload endpoint for secure file uploads (supports both POST and PUT)
+app.post('/api/upload/:filePath', async (req, res) => {
+  handleFileUpload(req, res);
+});
+
+app.put('/api/upload/:filePath', async (req, res) => {
+  handleFileUpload(req, res);
+});
+
+function handleFileUpload(req: any, res: any) {
+  try {
+    const filePath = decodeURIComponent(req.params.filePath);
+    console.log('File upload request:', { filePath, originalPath: req.params.filePath, method: req.method });
+    
+    // Set CORS headers for upload endpoint
+    const origin = req.headers.origin;
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3001', 
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:3001',
+      'https://www.studious.sh',  // Production frontend
+      'https://studious.sh',     // Production frontend (without www)
+      process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    ];
+    
+    if (origin && allowedOrigins.includes(origin)) {
+      res.header('Access-Control-Allow-Origin', origin);
+    } else {
+      res.header('Access-Control-Allow-Origin', 'http://localhost:3000');
+    }
+    
+    res.header('Access-Control-Allow-Credentials', 'true');
+    
+    // Get content type from headers
+    const contentType = req.headers['content-type'] || 'application/octet-stream';
+    
+    // Create a new file in the bucket
+    const file = bucket.file(filePath);
+    
+    // Create a write stream to Google Cloud Storage
+    const writeStream = file.createWriteStream({
+      metadata: {
+        contentType,
+      },
+    });
+    
+    // Handle stream events
+    writeStream.on('error', (error) => {
+      console.error('Error uploading file:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Error uploading file' });
+      }
+    });
+    
+    writeStream.on('finish', () => {
+      console.log('File uploaded successfully:', filePath);
+      res.status(200).json({ 
+        success: true, 
+        filePath,
+        message: 'File uploaded successfully' 
+      });
+    });
+    
+    // Pipe the request body to the write stream
+    req.pipe(writeStream);
+    
+  } catch (error) {
+    console.error('Error handling file upload:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
 
 // Create caller
 const createCaller = createCallerFactory(appRouter);

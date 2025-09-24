@@ -1093,6 +1093,13 @@ export const assignmentRouter = createTRPCRouter({
             select: {
               id: true,
               username: true,
+              profile: {
+                select: {
+                  displayName: true,
+                  profilePicture: true,
+                  profilePictureThumbnail: true,
+                },
+              },
             },
           },
           assignment: {
@@ -1195,6 +1202,13 @@ export const assignmentRouter = createTRPCRouter({
               select: {
                 id: true,
                 username: true,
+                profile: {
+                  select: {
+                    displayName: true,
+                    profilePicture: true,
+                    profilePictureThumbnail: true,
+                  },
+                },
               },
             },
             assignment: {
@@ -1311,6 +1325,13 @@ export const assignmentRouter = createTRPCRouter({
             select: {
               id: true,
               username: true,
+              profile: {
+                select: {
+                  displayName: true,
+                  profilePicture: true,
+                  profilePictureThumbnail: true,
+                },
+              },
             },
           },
           assignment: {

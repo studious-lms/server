@@ -49,6 +49,17 @@ export const attendanceRouter = createTRPCRouter({
           students: {
             select: {
               id: true,
+              username: true,
+              profile: {
+                select: {
+                  displayName: true,
+                  profilePicture: true,
+                  profilePictureThumbnail: true,
+                  bio: true,
+                  location: true,
+                  website: true,
+                },
+              },
             },
           },
         },
@@ -117,18 +128,39 @@ export const attendanceRouter = createTRPCRouter({
             select: {
               id: true,
               username: true,
+              profile: {
+                select: {
+                  displayName: true,
+                  profilePicture: true,
+                  profilePictureThumbnail: true,
+                },
+              },
             },
           },
           late: {
             select: {
               id: true,
               username: true,
+              profile: {
+                select: {
+                  displayName: true,
+                  profilePicture: true,
+                  profilePictureThumbnail: true,
+                },
+              },
             },
           },
           absent: {
             select: {
               id: true,
               username: true,
+              profile: {
+                select: {
+                  displayName: true,
+                  profilePicture: true,
+                  profilePictureThumbnail: true,
+                },
+              },
             },
           },
         },

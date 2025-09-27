@@ -16,6 +16,12 @@ export const conversationRouter = createTRPCRouter({
         },
       },
       include: {
+        labChat: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
         members: {
           include: {
             user: {
@@ -101,6 +107,7 @@ export const conversationRouter = createTRPCRouter({
           name: conversation.name,
           createdAt: conversation.createdAt,
           updatedAt: conversation.updatedAt,
+          labChat: conversation.labChat,
           members: conversation.members,
           lastMessage: conversation.messages[0] || null,
           unreadCount,

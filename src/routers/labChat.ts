@@ -3,6 +3,14 @@ import { createTRPCRouter, protectedProcedure } from '../trpc.js';
 import { prisma } from '../lib/prisma.js';
 import { pusher } from '../lib/pusher.js';
 import { TRPCError } from '@trpc/server';
+import { 
+  inferenceClient,
+  sendAIMessage,
+  type LabChatContext 
+} from '../utils/inference.js';
+import { logger } from '../utils/logger.js';
+import { isAIUser } from '../utils/aiUser.js';
+import OpenAI from 'openai';
 
 export const labChatRouter = createTRPCRouter({
   create: protectedProcedure
@@ -83,14 +91,14 @@ export const labChatRouter = createTRPCRouter({
           },
         });
 
-        // Add all class members to the conversation
-        const allMembers = [
-          ...classWithTeachers.teachers.map(t => ({ userId: t.id, role: 'ADMIN' as const })),
-          ...classWithTeachers.students.map(s => ({ userId: s.id, role: 'MEMBER' as const })),
-        ];
+        // Add only teachers to the conversation (this is for course material creation)
+        const teacherMembers = classWithTeachers.teachers.map(t => ({ 
+          userId: t.id, 
+          role: 'ADMIN' as const 
+        }));
 
         await tx.conversationMember.createMany({
-          data: allMembers.map(member => ({
+          data: teacherMembers.map(member => ({
             userId: member.userId,
             conversationId: conversation.id,
             role: member.role,
@@ -152,6 +160,11 @@ export const labChatRouter = createTRPCRouter({
         return labChat;
       });
 
+      // Generate AI introduction message in parallel (don't await - fire and forget)
+      generateAndSendLabIntroduction(result.id, result.conversationId, context, classWithTeachers.subject || 'Lab').catch(error => {
+        logger.error('Failed to generate AI introduction:', { error, labChatId: result.id });
+      });
+
       // Broadcast lab chat creation to class members
       try {
         await pusher.trigger(`class-${classId}`, 'lab-chat-created', {
@@ -176,7 +189,8 @@ export const labChatRouter = createTRPCRouter({
       const userId = ctx.user!.id;
       const { labChatId } = input;
 
-      const labChat = await prisma.labChat.findFirst({
+      // First, try to find the lab chat if user is already a member
+      let labChat = await prisma.labChat.findFirst({
         where: {
           id: labChatId,
           conversation: {
@@ -229,6 +243,88 @@ export const labChatRouter = createTRPCRouter({
           },
         },
       });
+
+      // If not found, check if user is a teacher in the class
+      if (!labChat) {
+        const labChatForTeacher = await prisma.labChat.findFirst({
+          where: {
+            id: labChatId,
+            class: {
+              teachers: {
+                some: {
+                  id: userId,
+                },
+              },
+            },
+          },
+          include: {
+            conversation: {
+              select: {
+                id: true,
+              },
+            },
+          },
+        });
+
+        if (labChatForTeacher) {
+          // Add teacher to conversation
+          await prisma.conversationMember.create({
+            data: {
+              userId,
+              conversationId: labChatForTeacher.conversation.id,
+              role: 'ADMIN',
+            },
+          });
+
+          // Now fetch the full lab chat with the user as a member
+          labChat = await prisma.labChat.findFirst({
+            where: {
+              id: labChatId,
+            },
+            include: {
+              conversation: {
+                include: {
+                  members: {
+                    include: {
+                      user: {
+                        select: {
+                          id: true,
+                          username: true,
+                          profile: {
+                            select: {
+                              displayName: true,
+                              profilePicture: true,
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+              createdBy: {
+                select: {
+                  id: true,
+                  username: true,
+                  profile: {
+                    select: {
+                      displayName: true,
+                    },
+                  },
+                },
+              },
+              class: {
+                select: {
+                  id: true,
+                  name: true,
+                  subject: true,
+                  section: true,
+                },
+              },
+            },
+          });
+        }
+      }
 
       if (!labChat) {
         throw new TRPCError({
@@ -439,7 +535,7 @@ export const labChatRouter = createTRPCRouter({
         return message;
       });
 
-      // Broadcast to Pusher channel (using conversation ID)
+      // Broadcast to Pusher channel (same format as regular chat)
       try {
         await pusher.trigger(`conversation-${labChat.conversationId}`, 'new-message', {
           id: result.id,
@@ -449,12 +545,19 @@ export const labChatRouter = createTRPCRouter({
           createdAt: result.createdAt,
           sender: result.sender,
           mentionedUserIds,
-          labChatId, // Include lab chat ID for frontend context
         });
       } catch (error) {
         console.error('Failed to broadcast lab chat message:', error);
         // Don't fail the request if Pusher fails
       }
+
+        // Generate AI response in parallel (don't await - fire and forget)
+        if (!isAIUser(userId)) {
+          // Run AI response generation in background
+          generateAndSendLabResponse(labChatId, content, labChat.conversationId).catch(error => {
+            logger.error('Failed to generate AI response:', { error });
+          });
+        }
 
       return {
         id: result.id,
@@ -464,7 +567,6 @@ export const labChatRouter = createTRPCRouter({
         createdAt: result.createdAt,
         sender: result.sender,
         mentionedUserIds,
-        labChatId,
       };
     }),
 
@@ -539,3 +641,184 @@ export const labChatRouter = createTRPCRouter({
       return { success: true };
     }),
 });
+
+/**
+ * Generate and send AI introduction for lab chat
+ * Uses the stored context directly from database
+ */
+async function generateAndSendLabIntroduction(
+  labChatId: string,
+  conversationId: string,
+  contextString: string,
+  subject: string
+): Promise<void> {
+  try {
+    // Enhance the stored context with clarifying question instructions
+    const enhancedSystemPrompt = `${contextString}
+
+IMPORTANT INSTRUCTIONS:
+- You are helping teachers create course materials
+- Use the context information provided above (subject, topic, difficulty, objectives, etc.) as your foundation
+- Only ask clarifying questions about details NOT already specified in the context
+- Focus your questions on format preferences, specific requirements, or missing details needed to create the content
+- Only output final course materials when you have sufficient details beyond what's in the context
+- Do not use markdown formatting in your responses - use plain text only
+- When creating content, make it clear and well-structured without markdown`;
+
+    const completion = await inferenceClient.chat.completions.create({
+      model: 'command-a-03-2025',
+      messages: [
+        { role: 'system', content: enhancedSystemPrompt },
+        { 
+          role: 'user', 
+          content: 'Please introduce yourself to the teaching team. Explain that you will help create course materials by first asking clarifying questions based on the context provided, and only output final content when you have enough information.' 
+        },
+      ],
+      max_tokens: 300,
+      temperature: 0.8,
+    });
+
+    const response = completion.choices[0]?.message?.content;
+    
+    if (!response) {
+      throw new Error('No response generated from inference API');
+    }
+
+    // Send AI introduction using centralized sender
+    await sendAIMessage(response, conversationId, {
+      subject,
+    });
+
+    logger.info('AI Introduction sent', { labChatId, conversationId });
+
+  } catch (error) {
+    logger.error('Failed to generate AI introduction:', { error, labChatId });
+    
+    // Send fallback introduction
+    try {
+      const fallbackIntro = `Hello teaching team! I'm your AI assistant for course material development. I will help you create educational content by first asking clarifying questions based on the provided context, then outputting final materials when I have sufficient information. I won't use markdown formatting in my responses. What would you like to work on?`;
+      
+      await sendAIMessage(fallbackIntro, conversationId, {
+        subject,
+      });
+
+      logger.info('Fallback AI introduction sent', { labChatId });
+
+    } catch (fallbackError) {
+      logger.error('Failed to send fallback AI introduction:', { error: fallbackError, labChatId });
+    }
+  }
+}
+
+/**
+ * Generate and send AI response to teacher message
+ * Uses the stored context directly from database
+ */
+async function generateAndSendLabResponse(
+  labChatId: string,
+  teacherMessage: string,
+  conversationId: string
+): Promise<void> {
+  try {
+    // Get lab context from database
+    const fullLabChat = await prisma.labChat.findUnique({
+      where: { id: labChatId },
+      include: {
+        class: {
+          select: {
+            name: true,
+            subject: true,
+          },
+        },
+      },
+    });
+
+    if (!fullLabChat) {
+      throw new Error('Lab chat not found');
+    }
+
+    // Get recent conversation history
+    const recentMessages = await prisma.message.findMany({
+      where: {
+        conversationId,
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            username: true,
+            profile: {
+              select: {
+                displayName: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 10, // Last 10 messages for context
+    });
+
+    // Build conversation history as proper message objects
+    // Enhance the stored context with clarifying question instructions
+    const enhancedSystemPrompt = `${fullLabChat.context}
+
+IMPORTANT INSTRUCTIONS:
+- Use the context information provided above (subject, topic, difficulty, objectives, etc.) as your foundation
+- Based on the teacher's input and existing context, only ask clarifying questions about details NOT already specified
+- Focus questions on format preferences, specific requirements, quantity, or missing implementation details
+- Only output final course materials when you have sufficient details beyond what's in the context
+- Do not use markdown formatting in your responses - use plain text only
+- When you do create content, make it clear and well-structured without markdown
+- If the request is vague, ask 1-2 specific clarifying questions about missing details only`;
+
+    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      { role: 'system', content: enhancedSystemPrompt },
+    ];
+
+    // Add recent conversation history
+    recentMessages.reverse().forEach(msg => {
+      const role = isAIUser(msg.senderId) ? 'assistant' : 'user';
+      const senderName = msg.sender?.profile?.displayName || msg.sender?.username || 'Teacher';
+      const content = isAIUser(msg.senderId) ? msg.content : `${senderName}: ${msg.content}`;
+      
+      messages.push({
+        role: role as 'user' | 'assistant',
+        content,
+      });
+    });
+
+    // Add the new teacher message
+    const senderName = 'Teacher'; // We could get this from the actual sender if needed
+    messages.push({
+      role: 'user',
+      content: `${senderName}: ${teacherMessage}`,
+    });
+
+    const completion = await inferenceClient.chat.completions.create({
+      model: 'command-a-03-2025',
+      messages,
+      max_tokens: 500,
+      temperature: 0.7,
+    });
+
+    const response = completion.choices[0]?.message?.content;
+    
+    if (!response) {
+      throw new Error('No response generated from inference API');
+    }
+
+    // Send AI response
+    await sendAIMessage(response, conversationId, {
+      subject: fullLabChat.class?.subject || 'Lab',
+    });
+
+    logger.info('AI response sent', { labChatId, conversationId });
+
+  } catch (error) {
+    logger.error('Failed to generate AI response:', { error, labChatId });
+  }
+}
+

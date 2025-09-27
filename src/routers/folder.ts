@@ -3,6 +3,7 @@ import { createTRPCRouter, protectedProcedure, protectedClassMemberProcedure, pr
 import { TRPCError } from "@trpc/server";
 import { prisma } from "../lib/prisma.js";
 import { uploadFiles, type UploadedFile } from "../lib/fileUpload.js";
+import { type Folder } from "@prisma/client";
 
 const fileSchema = z.object({
   name: z.string(),
@@ -765,5 +766,27 @@ export const folderRouter = createTRPCRouter({
       });
 
       return updatedFolder;
+    }),
+    getParents: protectedProcedure
+    .input(z.object({
+      folderId: z.string(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const { folderId } = input;
+
+      let currentParent: string | null = folderId;
+      const parents: Folder[] = [];
+      while (currentParent) {
+        const parent = await prisma.folder.findFirst({
+          where: {
+            id: currentParent,
+          },
+        });
+
+        currentParent = parent?.parentFolderId;
+        parents.push(parent);
+      }
+
+      return parents;
     }),
 }); 

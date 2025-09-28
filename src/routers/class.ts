@@ -89,6 +89,15 @@ export const classRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const { classId } = input;
 
+      const isTeacher = await prisma.class.findFirst({
+        where: {
+          id: classId,
+          teachers: {
+            some: { id: ctx.user?.id },
+          },
+        },
+      });
+
       const classData = await prisma.class.findUnique({
         where: {
           id: classId,
@@ -169,9 +178,11 @@ export const classRouter = createTRPCRouter({
                 },
               },
               submissions: {
-                // where: {
-                //   studentId: ctx.user?.id,
-                // },
+                ...(!isTeacher && {
+                  where: {
+                    studentId: ctx.user?.id,
+                  },
+                }),
                 select: {
                   studentId: true,
                   id: true,

@@ -169,9 +169,9 @@ export const classRouter = createTRPCRouter({
                 },
               },
               submissions: {
-                where: {
-                  studentId: ctx.user?.id,
-                },
+                // where: {
+                //   studentId: ctx.user?.id,
+                // },
                 select: {
                   studentId: true,
                   id: true,

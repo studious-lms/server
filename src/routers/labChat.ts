@@ -10,7 +10,11 @@ import {
 } from '../utils/inference.js';
 import { logger } from '../utils/logger.js';
 import { isAIUser } from '../utils/aiUser.js';
+import { uploadFile } from 'src/lib/googleCloudStorage.js';
+import { createPdf } from "src/lib/jsonConversion.js"
 import OpenAI from 'openai';
+import { zodResponseFormat } from "openai/helpers/zod";
+import { v4 as uuidv4 } from "uuid";
 
 export const labChatRouter = createTRPCRouter({
   create: protectedProcedure
@@ -766,13 +770,19 @@ async function generateAndSendLabResponse(
     const enhancedSystemPrompt = `${fullLabChat.context}
 
 IMPORTANT INSTRUCTIONS:
-- Use the context information provided above (subject, topic, difficulty, objectives, etc.) as your foundation
-- Based on the teacher's input and existing context, only ask clarifying questions about details NOT already specified
-- Focus questions on format preferences, specific requirements, quantity, or missing implementation details
-- Only output final course materials when you have sufficient details beyond what's in the context
-- Do not use markdown formatting in your responses - use plain text only
-- When you do create content, make it clear and well-structured without markdown
-- If the request is vague, ask 1-2 specific clarifying questions about missing details only`;
+- You must output ONLY a JSON object that matches this schema (no prose, no markdown):
+- Schema: { "blocks": [ { "format": <int 0-12>, "content": string | string[], "metadata"?: { fontSize?: number, lineHeight?: number, paragraphSpacing?: number, indentWidth?: number, paddingX?: number, paddingY?: number, font?: 0|1|2|3|4|5, color?: "#RGB"|"#RRGGBB", background?: "#RGB"|"#RRGGBB", align?: "left"|"center"|"right" } } ] }
+- Format enum (integers): 0=HEADER_1, 1=HEADER_2, 2=HEADER_3, 3=HEADER_4, 4=HEADER_5, 5=HEADER_6, 6=PARAGRAPH, 7=BULLET, 8=NUMBERED, 9=TABLE, 10=IMAGE, 11=CODE_BLOCK, 12=QUOTE
+- Fonts enum: 0=TIMES_ROMAN, 1=COURIER, 2=HELVETICA, 3=HELVETICA_BOLD, 4=HELVETICA_ITALIC, 5=HELVETICA_BOLD_ITALIC
+- Colors must be hex strings: "#RGB" or "#RRGGBB".
+- Headings (0-5): content is a single string; you may set metadata.align.
+- Paragraphs (6) and Quotes (12): content is a single string.
+- Bullets (7) and Numbered (8): content is an array of strings (one item per list entry).
+- Code blocks (11): prefer content as an array of lines; preserve indentation via leading tabs/spaces. If using a single string, include \n between lines.
+- Table (9) and Image (10) are not supported by the renderer now; do not emit them.
+- Use metadata sparingly; omit fields you don't need. For code blocks you may set metadata.paddingX, paddingY, background, and font (1 for Courier).
+- Wrap text naturally; do not insert manual line breaks except where semantically required (lists, code).
+- The JSON must be valid and ready for PDF rendering by the server.`;
 
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
       { role: 'system', content: enhancedSystemPrompt },
@@ -797,17 +807,78 @@ IMPORTANT INSTRUCTIONS:
       content: `${senderName}: ${teacherMessage}`,
     });
 
+    const pdfFormat = z.object({
+      blocks: z.array(
+        z.object({
+          // FormatTypes enum as integer (see src/lib/jsonStyles.ts)
+          // 0: HEADER_1, 1: HEADER_2, 2: HEADER_3, 3: HEADER_4, 4: HEADER_5, 5: HEADER_6,
+          // 6: PARAGRAPH, 7: BULLET, 8: NUMBERED, 9: TABLE, 10: IMAGE, 11: CODE_BLOCK, 12: QUOTE
+          format: z.number().int().min(0).max(12),
+
+          // Content can be a single string or an array of strings
+          // - string: paragraphs, headings, quotes, code block (can contain \n)
+          // - string[]: bullets, numbered lists, or explicit code lines
+          content: z.union([z.string(), z.array(z.string())]),
+
+          // Optional rendering metadata used by the PDF generator
+          metadata: z
+            .object({
+              fontSize: z.number().min(6).optional(),
+              lineHeight: z.number().min(0.6).optional(),
+              paragraphSpacing: z.number().min(0).optional(),
+              indentWidth: z.number().min(0).optional(),
+              paddingX: z.number().min(0).optional(),
+              paddingY: z.number().min(0).optional(),
+
+              // Fonts enum (see src/lib/jsonStyles.ts -> Fonts)
+              // 0: TIMES_ROMAN, 1: COURIER, 2: HELVETICA, 3: HELVETICA_BOLD,
+              // 4: HELVETICA_ITALIC, 5: HELVETICA_BOLD_ITALIC
+              font: z.number().int().min(0).max(5).optional(),
+
+              // Colors as hex strings (#RGB or #RRGGBB)
+              color: z
+                .string()
+                .regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/)
+                .optional(),
+              background: z
+                .string()
+                .regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/)
+                .optional(),
+
+              // Headings alignment
+              align: z.enum(["left", "center", "right"]).optional(),
+            })
+            .strict()
+            .optional(),
+        })
+        .strict()
+      ),
+    }).strict()
+
     const completion = await inferenceClient.chat.completions.create({
       model: 'command-a-03-2025',
       messages,
       max_tokens: 500,
       temperature: 0.7,
+      response_format: zodResponseFormat(pdfFormat, "pdfFormat"),
     });
 
     const response = completion.choices[0]?.message?.content;
     
     if (!response) {
       throw new Error('No response generated from inference API');
+    }
+
+    // Parse the JSON response and generate PDF
+    try {
+      const jsonData = JSON.parse(response);
+      if (jsonData.blocks && Array.isArray(jsonData.blocks)) {
+        let pdfBytes = await createPdf(jsonData.blocks);
+        logger.info('PDF generated successfully', { labChatId });
+        uploadFile(Buffer.from(pdfBytes).toString('base64'), `${uuidv4()}.pdf`, 'application/pdf')
+      }
+    } catch (parseError) {
+      logger.error('Failed to parse AI response or generate PDF:', { error: parseError, labChatId });
     }
 
     // Send AI response

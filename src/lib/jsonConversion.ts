@@ -2,7 +2,7 @@ import { PDFDocument, PDFFont, RGB, StandardFonts, last, rgb } from 'pdf-lib'
 import { writeFile } from 'fs'
 import { DocumentBlock, FormatTypes, Fonts } from './jsonStyles'
 
-async function createPdf(blocks: DocumentBlock[]) {
+export async function createPdf(blocks: DocumentBlock[]) {
     const pdfDoc = await PDFDocument.create()
     const timesRomanFont = await pdfDoc.embedFont(StandardFonts.TimesRoman)
     const courierFont = await pdfDoc.embedFont(StandardFonts.Courier)
@@ -485,7 +485,8 @@ async function createPdf(blocks: DocumentBlock[]) {
     }
 
     const pdfBytes = await pdfDoc.save()
-    writeFile('output.pdf', pdfBytes, () => {
-        console.log('PDF created successfully') // Still only saves file, no API yet
-    })
+    // writeFile('output.pdf', pdfBytes, () => {
+    //     console.log('PDF created successfully') // Still only saves file, no API yet
+    // })
+    return pdfBytes
 }

@@ -1,36 +1,51 @@
-import { PDFDocument, PDFFont, RGB, StandardFonts, rgb } from 'pdf-lib'
+import { PDFDocument, PDFFont, RGB, StandardFonts, last, rgb } from 'pdf-lib'
 import { writeFile } from 'fs'
-import { DocumentBlock, FormatTypes } from './jsonStyles'
+import { DocumentBlock, FormatTypes, Fonts } from './jsonStyles'
 
-export async function createPdf(blocks: DocumentBlock[]) {
+async function createPdf(blocks: DocumentBlock[]) {
     const pdfDoc = await PDFDocument.create()
     const timesRomanFont = await pdfDoc.embedFont(StandardFonts.TimesRoman)
     const courierFont = await pdfDoc.embedFont(StandardFonts.Courier)
     const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica)
     const helveticaBoldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
+    const helveticaItalicFont = await pdfDoc.embedFont(StandardFonts.HelveticaOblique)
+    const helveticaBoldItalicFont = await pdfDoc.embedFont(StandardFonts.HelveticaBoldOblique)
 
     const defaultFont = helveticaFont
     const defaultParagraphSpacing = 10;
+    const defaultLineHeight = 1.3
+    const defaultFontSize = 12
+    const defaultIndentWidth = 14
+    const defaultPadding = 10
 
     const headingColor = rgb(0.1, 0.1, 0.1)
     const paragraphColor = rgb(0.15, 0.15, 0.15)
 
+    const FONTS: Record<number, PDFFont> = {
+        [Fonts.TIMES_ROMAN]: timesRomanFont,
+        [Fonts.COURIER]: courierFont,
+        [Fonts.HELVETICA]: helveticaFont,
+        [Fonts.HELVETICA_BOLD]: helveticaBoldFont,
+        [Fonts.HELVETICA_ITALIC]: helveticaItalicFont,
+        [Fonts.HELVETICA_BOLD_ITALIC]: helveticaBoldItalicFont,
+    }
+
     const STYLE_PRESETS: Record<number,
-    {fontSize: number; lineHeight: number; paragraphSpacing?: number; font?: PDFFont; color?: RGB; background?: RGB }> =
+        { fontSize: number; lineHeight: number; paragraphSpacing?: number; font?: PDFFont; color?: RGB; background?: RGB }> =
     {
-        [FormatTypes.HEADER_1]: { fontSize: 28, lineHeight: 28 * 1.35, font: helveticaBoldFont, color: headingColor },
-        [FormatTypes.HEADER_2]: { fontSize: 22, lineHeight: 22 * 1.35, font: helveticaBoldFont, color: headingColor },
-        [FormatTypes.HEADER_3]: { fontSize: 18, lineHeight: 18 * 1.35, font: helveticaBoldFont, color: headingColor },
-        [FormatTypes.HEADER_4]: { fontSize: 16, lineHeight: 16 * 1.3, font: helveticaBoldFont, color: headingColor },
-        [FormatTypes.HEADER_5]: { fontSize: 14, lineHeight: 14 * 1.3, font: helveticaBoldFont, color: headingColor },
-        [FormatTypes.HEADER_6]: { fontSize: 12, lineHeight: 12 * 1.3, font: helveticaBoldFont, color: headingColor },
-        [FormatTypes.QUOTE]: { fontSize: 14, lineHeight: 14 * 1.5, color: rgb(0.35, 0.35, 0.35) },
-        [FormatTypes.CODE_BLOCK]: { fontSize: 12, lineHeight: 12 * 1.6, font: courierFont, color: rgb(0.1, 0.1, 0.1), background: rgb(0.95, 0.95, 0.95) },
-        [FormatTypes.PARAGRAPH]: { fontSize: 12, lineHeight: 12 * 1.3, color: paragraphColor },
-        [FormatTypes.BULLET]: { fontSize: 12, lineHeight: 12 * 1.3, color: paragraphColor },
-        [FormatTypes.NUMBERED]: { fontSize: 12, lineHeight: 12 * 1.3, color: paragraphColor },
-        [FormatTypes.TABLE]: { fontSize: 12, lineHeight: 12 * 1.3, color: paragraphColor },
-        [FormatTypes.IMAGE]: { fontSize: 12, lineHeight: 12 * 1.3 },
+        [FormatTypes.HEADER_1]: { fontSize: 28, lineHeight: 1.35, font: helveticaBoldFont, color: headingColor },
+        [FormatTypes.HEADER_2]: { fontSize: 22, lineHeight: 1.35, font: helveticaBoldFont, color: headingColor },
+        [FormatTypes.HEADER_3]: { fontSize: 18, lineHeight: 1.35, font: helveticaBoldFont, color: headingColor },
+        [FormatTypes.HEADER_4]: { fontSize: 16, lineHeight: 1.3, font: helveticaBoldFont, color: headingColor },
+        [FormatTypes.HEADER_5]: { fontSize: 14, lineHeight: 1.3, font: helveticaBoldFont, color: headingColor },
+        [FormatTypes.HEADER_6]: { fontSize: 12, lineHeight: 1.3, font: helveticaBoldFont, color: headingColor },
+        [FormatTypes.QUOTE]: { fontSize: 14, lineHeight: 1.5, color: rgb(0.35, 0.35, 0.35) },
+        [FormatTypes.CODE_BLOCK]: { fontSize: 12, lineHeight: 1.6, font: courierFont, color: rgb(0.1, 0.1, 0.1), background: rgb(0.95, 0.95, 0.95) },
+        [FormatTypes.PARAGRAPH]: { fontSize: 12, lineHeight: 1.3, color: paragraphColor },
+        [FormatTypes.BULLET]: { fontSize: 12, lineHeight: 1.3, color: paragraphColor },
+        [FormatTypes.NUMBERED]: { fontSize: 12, lineHeight: 1.3, color: paragraphColor },
+        [FormatTypes.TABLE]: { fontSize: 12, lineHeight: 1.3, color: paragraphColor },
+        [FormatTypes.IMAGE]: { fontSize: 12, lineHeight: 1.3 },
     }
 
     const hexToRgb = (hex) => {
@@ -44,7 +59,7 @@ export async function createPdf(blocks: DocumentBlock[]) {
             const g = parseInt(hex.slice(2, 3), 16) / 15.0;
             const b = parseInt(hex.slice(3, 4), 16) / 15.0;
             return rgb(r, g, b);
-        } else {return rgb(0.0, 0.0, 0.0)};
+        } else { return rgb(0.0, 0.0, 0.0) };
     };
 
     const colorParse = (color) => {
@@ -125,28 +140,38 @@ export async function createPdf(blocks: DocumentBlock[]) {
     }
 
     let y = height - marginTop
-    let lastLineHeight = 0
+    let lastLineHeight = -1
     for (const block of blocks) {
-        const preset = STYLE_PRESETS[block.format] || { fontSize: 12, lineHeight: 12 * 1.3 }
+        const preset = STYLE_PRESETS[block.format] || { fontSize: defaultFontSize, lineHeight: defaultLineHeight }
 
         const userLineHeight = (block as any).metadata?.lineHeight
 
         const fontSize = (block as any).metadata?.fontSize || preset.fontSize
-        const lineHeight = Math.ceil((userLineHeight ? fontSize * userLineHeight : preset.lineHeight))
+        const lineHeight = (userLineHeight ? fontSize * userLineHeight : fontSize * preset.lineHeight)
         const paragraphSpacing = (block as any).metadata?.paragraphSpacing || defaultParagraphSpacing
+        const indentWidth = (block as any).metadata?.indentWidth || defaultIndentWidth
 
-        const font = (block as any).metadata?.font || preset.font || defaultFont
+        const paddingX = (block as any).metadata?.paddingX || defaultPadding
+        const paddingY = (block as any).metadata?.paddingY || defaultPadding
+
+        const font = FONTS[(block as any).metadata?.font] || preset.font || defaultFont // Broken
         const color = colorParse((block as any).metadata?.color || preset.color || rgb(0.0, 0.0, 0.0))
         const background = colorParse((block as any).metadata?.background || preset.background || rgb(1.0, 1.0, 1.0))
 
-        y -= lineHeight - lastLineHeight
+        if (lastLineHeight >= 0) {
+            y -= lineHeight - lastLineHeight
+        } else {
+            y -= fontSize
+        }
 
         const ensureSpace = (needed: number) => {
             if (y - needed < marginBottom) {
                 page = pdfDoc.addPage()
                     ; ({ width, height } = page.getSize())
-                y = height - marginTop
-            }
+                y = height - marginTop - fontSize
+                lastLineHeight = -1
+                return true
+            } else { return false }
         }
 
         const drawParagraph = (text: string) => {
@@ -188,7 +213,7 @@ export async function createPdf(blocks: DocumentBlock[]) {
         }
 
         const drawBulletList = (items: string[]) => {
-            const bulletIndent = 14
+            const bulletIndent = indentWidth
             const gap = 8
             const contentWidth = maxTextWidth() - (bulletIndent + gap)
             for (const item of items) {
@@ -196,7 +221,7 @@ export async function createPdf(blocks: DocumentBlock[]) {
                 ensureSpace(lineHeight)
                 // Bullet glyph
                 page.drawText('•', {
-                    x: marginLeft + 2,
+                    x: marginLeft + gap,
                     y: y,
                     size: fontSize,
                     font: font,
@@ -227,7 +252,7 @@ export async function createPdf(blocks: DocumentBlock[]) {
         }
 
         const drawNumberedList = (items: string[]) => {
-            const numberIndent = 18
+            const numberIndent = indentWidth
             const gap = 8
             const contentWidth = maxTextWidth() - (numberIndent + gap)
             let index = 1
@@ -237,7 +262,7 @@ export async function createPdf(blocks: DocumentBlock[]) {
                 const lines = wrapText(item, font, fontSize, contentWidth)
                 ensureSpace(lineHeight)
                 page.drawText(numLabel, {
-                    x: marginLeft,
+                    x: marginLeft + gap,
                     y: y,
                     size: fontSize,
                     font: font,
@@ -272,16 +297,21 @@ export async function createPdf(blocks: DocumentBlock[]) {
             const contentX = marginLeft + ruleWidth + ruleGap
             const contentWidth = maxTextWidth() - (ruleWidth + ruleGap)
             const lines = wrapText(text, font, fontSize, contentWidth)
-            const totalHeight = lines.length * lineHeight
-            ensureSpace(totalHeight)
-            page.drawRectangle({
-                x: marginLeft,
-                y: y - totalHeight + (lineHeight - fontSize),
-                width: ruleWidth,
-                height: totalHeight,
-                color: color,
-            })
+            const totalHeight = lines.length * lineHeight + fontSize
+            var remainingHeight = totalHeight
             for (const line of lines) {
+                let pageAdded = ensureSpace(lineHeight)
+                if (pageAdded || remainingHeight == totalHeight) {
+                    let blockHeight = Math.floor(Math.min(remainingHeight, y - marginBottom) / lineHeight) * lineHeight // Get remaining height on page
+                    page.drawRectangle({
+                        x: marginLeft,
+                        y: y + lineHeight,
+                        width: ruleWidth,
+                        height: -blockHeight - lineHeight + fontSize,
+                        color: color,
+                    })
+                    remainingHeight -= blockHeight + lineHeight - fontSize
+                }
                 page.drawText(line, {
                     x: contentX,
                     y: y,
@@ -291,40 +321,122 @@ export async function createPdf(blocks: DocumentBlock[]) {
                 })
                 y -= lineHeight
             }
+            y -= lineHeight - fontSize
         }
 
         const drawCodeBlock = (textLines: string[]) => {
-            const paddingY = Math.round(fontSize * 0.6)
-            const paddingX = Math.round(fontSize * 0.6)
-            const codeFont = preset.font || courierFont
-            // Wrap each input line separately to preserve line breaks
-            const wrappedLines: string[] = []
-            const contentW = maxTextWidth() - paddingX * 2
-            for (const l of textLines) {
-                const parts = wrapText(l, codeFont, fontSize, contentW)
-                wrappedLines.push(...parts)
+            const codeFont = font
+            
+            // Detect indentation patterns
+            const detectIndentation = (lines: string[]) => {
+                let tabCount = 0
+                let spaceCount = 0
+                let minSpaces = Infinity
+                
+                for (const line of lines) {
+                    if (line.trim().length === 0) continue // Skip empty lines
+                    
+                    const leadingWhitespace = line.match(/^(\s*)/)?.[1] || ''
+                    if (leadingWhitespace.includes('\t')) {
+                        tabCount++
+                    } else if (leadingWhitespace.length > 0) {
+                        spaceCount++
+                        minSpaces = Math.min(minSpaces, leadingWhitespace.length)
+                    }
+                }
+                
+                // Determine indentation strategy
+                if (tabCount > spaceCount) {
+                    return { type: 'tab', width: indentWidth }
+                } else if (spaceCount > 0) {
+                    // Use the most common space count, or default to 4
+                    const commonSpaces = minSpaces === Infinity ? 4 : minSpaces
+                    return { type: 'space', width: commonSpaces * (fontSize * 0.6) } // Approximate space width
+                } else {
+                    return { type: 'space', width: fontSize * 2.4 } // Default 4 spaces
+                }
             }
-            const blockHeight = wrappedLines.length * lineHeight + paddingY * 2
-            ensureSpace(blockHeight)
-            page.drawRectangle({
-                x: marginLeft,
-                y: y - blockHeight + lineHeight,
-                width: maxTextWidth(),
-                height: blockHeight,
-                color: background,
-            })
-            let innerY = y - paddingY
-            for (const wl of wrappedLines) {
-                page.drawText(wl, {
-                    x: marginLeft + paddingX,
-                    y: innerY,
+            
+            const indentInfo = detectIndentation(textLines)
+            
+            // Process lines with indentation
+            const processedLines: { text: string; indentLevel: number; originalLine: string }[] = []
+            
+            for (const line of textLines) {
+                const leadingWhitespace = line.match(/^(\s*)/)?.[1] || ''
+                let indentLevel = 0
+                
+                if (indentInfo.type === 'tab') {
+                    indentLevel = leadingWhitespace.split('\t').length - 1
+                } else {
+                    // Count spaces, grouping by the detected space width
+                    const spaceWidth = indentInfo.width / (fontSize * 0.6) // Convert back to space count
+                    indentLevel = Math.floor(leadingWhitespace.length / spaceWidth)
+                }
+                
+                processedLines.push({
+                    text: line.trim(),
+                    indentLevel,
+                    originalLine: line
+                })
+            }
+            
+            // Wrap each processed line separately to preserve line breaks and indentation
+            const wrappedLines: { text: string; indentLevel: number; isContinuation: boolean }[] = []
+            const contentW = maxTextWidth() - paddingX * 2
+            
+            for (const processedLine of processedLines) {
+                if (processedLine.text.length === 0) {
+                    // Empty line - preserve as empty line
+                    wrappedLines.push({
+                        text: '',
+                        indentLevel: processedLine.indentLevel,
+                        isContinuation: false
+                    })
+                } else {
+                    const parts = wrapText(processedLine.text, codeFont, fontSize, contentW)
+                    for (let i = 0; i < parts.length; i++) {
+                        wrappedLines.push({
+                            text: parts[i],
+                            indentLevel: processedLine.indentLevel,
+                            isContinuation: i > 0
+                        })
+                    }
+                }
+            }
+            
+            const totalHeight = wrappedLines.length * lineHeight + paddingY * 2
+            var remainingHeight = totalHeight
+            y -= paddingY
+            
+            for (const wrappedLine of wrappedLines) {
+                let pageAdded = ensureSpace(lineHeight + paddingY)
+                if (pageAdded || remainingHeight == totalHeight) {
+                    let blockHeight = Math.floor(Math.min(remainingHeight, y - marginBottom - paddingY) / lineHeight) * lineHeight
+                    page.drawRectangle({
+                        x: marginLeft,
+                        y: y + fontSize,
+                        width: maxTextWidth(),
+                        height: -blockHeight - paddingY * 2,
+                        color: background,
+                    })
+                    remainingHeight -= blockHeight
+                    y -= paddingY
+                }
+                
+                // Calculate indentation offset
+                const indentOffset = wrappedLine.indentLevel * indentInfo.width
+                
+                page.drawText(wrappedLine.text, {
+                    x: marginLeft + paddingX + indentOffset,
+                    y: y,
                     size: fontSize,
                     font: codeFont,
                     color: color,
                 })
-                innerY -= lineHeight
+                y -= lineHeight
             }
-            y -= blockHeight
+            y -= paddingY
         }
 
         // Render by block format
@@ -374,6 +486,6 @@ export async function createPdf(blocks: DocumentBlock[]) {
 
     const pdfBytes = await pdfDoc.save()
     writeFile('output.pdf', pdfBytes, () => {
-        console.log('PDF created successfully')
+        console.log('PDF created successfully') // Still only saves file, no API yet
     })
 }

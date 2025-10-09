@@ -18,6 +18,16 @@ export enum FormatTypes {
 }
 
 
+export enum Fonts {
+    TIMES_ROMAN,
+    COURIER,
+    HELVETICA,
+    HELVETICA_BOLD,
+    HELVETICA_ITALIC,
+    HELVETICA_BOLD_ITALIC,
+}
+
+
 // Each content block in a document
 export interface DocumentBlock {
     format: FormatTypes;

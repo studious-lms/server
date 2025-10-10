@@ -88,6 +88,10 @@ app.use((req, res, next) => {
 // Create HTTP server
 const httpServer = createServer(app);
 
+app.get('/health', (req, res) => {
+  res.status(200).json({ message: 'OK' });
+});
+
 // Setup Socket.IO
 const io = new Server(httpServer, {
   cors: {

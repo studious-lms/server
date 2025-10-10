@@ -1,10 +1,13 @@
 import { PDFDocument, PDFFont, RGB, StandardFonts, last, rgb } from 'pdf-lib'
 import { writeFile } from 'fs'
-import { DocumentBlock, FormatTypes, Fonts } from './jsonStyles'
+import { DocumentBlock, FormatTypes, Fonts } from './jsonStyles.js'
 
 export async function createPdf(blocks: DocumentBlock[]) {
-    const pdfDoc = await PDFDocument.create()
-    const timesRomanFont = await pdfDoc.embedFont(StandardFonts.TimesRoman)
+    console.log('createPdf: Starting PDF creation with', blocks.length, 'blocks');
+    try {
+        const pdfDoc = await PDFDocument.create()
+        console.log('createPdf: PDFDocument created successfully');
+        const timesRomanFont = await pdfDoc.embedFont(StandardFonts.TimesRoman)
     const courierFont = await pdfDoc.embedFont(StandardFonts.Courier)
     const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica)
     const helveticaBoldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
@@ -68,6 +71,28 @@ export async function createPdf(blocks: DocumentBlock[]) {
         } else {
             return color
         }
+    }
+
+    // Function to replace Unicode characters that can't be encoded by WinAnsi
+    const sanitizeText = (text: string): string => {
+        return text
+            .replace(/→/g, '->')  // Right arrow
+            .replace(/←/g, '<-')  // Left arrow
+            .replace(/↑/g, '^')   // Up arrow
+            .replace(/↓/g, 'v')   // Down arrow
+            .replace(/•/g, '*')   // Bullet point
+            .replace(/–/g, '-')   // En dash
+            .replace(/—/g, '--')  // Em dash
+            .replace(/'/g, "'")   // Left single quote
+            .replace(/'/g, "'")   // Right single quote
+            .replace(/"/g, '"')   // Left double quote
+            .replace(/"/g, '"')   // Right double quote
+            .replace(/…/g, '...')  // Ellipsis
+            .replace(/°/g, ' degrees') // Degree symbol
+            .replace(/±/g, '+/-')  // Plus-minus
+            .replace(/×/g, 'x')    // Multiplication sign
+            .replace(/÷/g, '/')    // Division sign
+            // Add more replacements as needed
     }
 
     let page = pdfDoc.addPage()
@@ -141,7 +166,11 @@ export async function createPdf(blocks: DocumentBlock[]) {
 
     let y = height - marginTop
     let lastLineHeight = -1
-    for (const block of blocks) {
+    console.log('createPdf: Starting to process', blocks.length, 'blocks');
+    for (let i = 0; i < blocks.length; i++) {
+        const block = blocks[i];
+        console.log(`createPdf: Processing block ${i + 1}/${blocks.length}, format: ${block.format}, content type: ${typeof block.content}`);
+        try {
         const preset = STYLE_PRESETS[block.format] || { fontSize: defaultFontSize, lineHeight: defaultLineHeight }
 
         const userLineHeight = (block as any).metadata?.lineHeight
@@ -175,7 +204,8 @@ export async function createPdf(blocks: DocumentBlock[]) {
         }
 
         const drawParagraph = (text: string) => {
-            const lines = wrapText(text, font, fontSize, maxTextWidth())
+            const sanitizedText = sanitizeText(text)
+            const lines = wrapText(sanitizedText, font, fontSize, maxTextWidth())
             for (const line of lines) {
                 ensureSpace(lineHeight)
                 page.drawText(line, {
@@ -190,7 +220,8 @@ export async function createPdf(blocks: DocumentBlock[]) {
         }
 
         const drawHeading = (text: string, align?: 'left' | 'center' | 'right') => {
-            const lines = wrapText(text, font, fontSize, maxTextWidth())
+            const sanitizedText = sanitizeText(text)
+            const lines = wrapText(sanitizedText, font, fontSize, maxTextWidth())
             for (const line of lines) {
                 ensureSpace(lineHeight)
                 let x = marginLeft
@@ -217,10 +248,11 @@ export async function createPdf(blocks: DocumentBlock[]) {
             const gap = 8
             const contentWidth = maxTextWidth() - (bulletIndent + gap)
             for (const item of items) {
-                const lines = wrapText(item, font, fontSize, contentWidth)
+                const sanitizedItem = sanitizeText(item)
+                const lines = wrapText(sanitizedItem, font, fontSize, contentWidth)
                 ensureSpace(lineHeight)
-                // Bullet glyph
-                page.drawText('•', {
+                // Bullet glyph (use ASCII bullet instead of Unicode)
+                page.drawText('*', {
                     x: marginLeft + gap,
                     y: y,
                     size: fontSize,
@@ -259,7 +291,8 @@ export async function createPdf(blocks: DocumentBlock[]) {
             for (const item of items) {
                 const numLabel = `${index}.`
                 const numWidth = font.widthOfTextAtSize(numLabel, fontSize)
-                const lines = wrapText(item, font, fontSize, contentWidth)
+                const sanitizedItem = sanitizeText(item)
+                const lines = wrapText(sanitizedItem, font, fontSize, contentWidth)
                 ensureSpace(lineHeight)
                 page.drawText(numLabel, {
                     x: marginLeft + gap,
@@ -296,7 +329,8 @@ export async function createPdf(blocks: DocumentBlock[]) {
             const ruleGap = 8
             const contentX = marginLeft + ruleWidth + ruleGap
             const contentWidth = maxTextWidth() - (ruleWidth + ruleGap)
-            const lines = wrapText(text, font, fontSize, contentWidth)
+            const sanitizedText = sanitizeText(text)
+            const lines = wrapText(sanitizedText, font, fontSize, contentWidth)
             const totalHeight = lines.length * lineHeight + fontSize
             var remainingHeight = totalHeight
             for (const line of lines) {
@@ -480,13 +514,24 @@ export async function createPdf(blocks: DocumentBlock[]) {
                 }
             }
         }
+        console.log(`createPdf: Successfully processed block ${i + 1}`);
         y -= paragraphSpacing
         lastLineHeight = lineHeight
+        } catch (blockError) {
+            console.error(`createPdf: Error processing block ${i + 1}:`, blockError);
+            throw blockError;
+        }
     }
 
-    const pdfBytes = await pdfDoc.save()
-    // writeFile('output.pdf', pdfBytes, () => {
-    //     console.log('PDF created successfully') // Still only saves file, no API yet
-    // })
-    return pdfBytes
+        console.log('createPdf: About to save PDF document');
+        const pdfBytes = await pdfDoc.save()
+        console.log('createPdf: PDF saved successfully, bytes length:', pdfBytes.length);
+        // writeFile('output.pdf', pdfBytes, () => {
+        //     console.log('PDF created successfully') // Still only saves file, no API yet
+        // })
+        return pdfBytes
+    } catch (error) {
+        console.error('createPdf: Error during PDF creation:', error);
+        throw error;
+    }
 }

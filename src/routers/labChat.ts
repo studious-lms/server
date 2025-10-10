@@ -10,10 +10,9 @@ import {
 } from '../utils/inference.js';
 import { logger } from '../utils/logger.js';
 import { isAIUser } from '../utils/aiUser.js';
-import { uploadFile } from 'src/lib/googleCloudStorage.js';
-import { createPdf } from "src/lib/jsonConversion.js"
+import { uploadFile } from '../lib/googleCloudStorage.js';
+import { createPdf } from "../lib/jsonConversion.js"
 import OpenAI from 'openai';
-import { zodResponseFormat } from "openai/helpers/zod";
 import { v4 as uuidv4 } from "uuid";
 
 export const labChatRouter = createTRPCRouter({
@@ -770,8 +769,25 @@ async function generateAndSendLabResponse(
     const enhancedSystemPrompt = `${fullLabChat.context}
 
 IMPORTANT INSTRUCTIONS:
-- You must output ONLY a JSON object that matches this schema (no prose, no markdown):
-- Schema: { "blocks": [ { "format": <int 0-12>, "content": string | string[], "metadata"?: { fontSize?: number, lineHeight?: number, paragraphSpacing?: number, indentWidth?: number, paddingX?: number, paddingY?: number, font?: 0|1|2|3|4|5, color?: "#RGB"|"#RRGGBB", background?: "#RGB"|"#RRGGBB", align?: "left"|"center"|"right" } } ] }
+- Use the context information provided above (subject, topic, difficulty, objectives, etc.) as your foundation
+- Based on the teacher's input and existing context, only ask clarifying questions about details NOT already specified
+- Focus questions on format preferences, specific requirements, quantity, or missing implementation details
+- Only output final course materials when you have sufficient details beyond what's in the context
+- Do not use markdown formatting in your responses - use plain text only
+- When you do create content, make it clear and well-structured without markdown
+- If the request is vague, ask 1-2 specific clarifying questions about missing details only
+- You are primarily a chatbot - only provide files when it is necessary
+
+RESPONSE FORMAT:
+- Always respond with JSON in this format: { "text": string, "docs": null | array }
+- "text": Your conversational response (questions, explanations, etc.) - use plain text, no markdown
+- "docs": null for regular conversation, or array of PDF document objects when creating course materials
+
+WHEN CREATING COURSE MATERIALS (docs field):
+- docs: [ { "title": string, "blocks": [ { "format": <int 0-12>, "content": string | string[], "metadata"?: { fontSize?: number, lineHeight?: number, paragraphSpacing?: number, indentWidth?: number, paddingX?: number, paddingY?: number, font?: 0|1|2|3|4|5, color?: "#RGB"|"#RRGGBB", background?: "#RGB"|"#RRGGBB", align?: "left"|"center"|"right" } } ] } ]
+- Each document in the array should have a "title" (used for filename) and "blocks" (content)
+- You can create multiple documents when it makes sense (e.g., separate worksheets, answer keys, different topics)
+- Use descriptive titles like "Biology_Cell_Structure_Worksheet" or "Chemistry_Lab_Instructions"
 - Format enum (integers): 0=HEADER_1, 1=HEADER_2, 2=HEADER_3, 3=HEADER_4, 4=HEADER_5, 5=HEADER_6, 6=PARAGRAPH, 7=BULLET, 8=NUMBERED, 9=TABLE, 10=IMAGE, 11=CODE_BLOCK, 12=QUOTE
 - Fonts enum: 0=TIMES_ROMAN, 1=COURIER, 2=HELVETICA, 3=HELVETICA_BOLD, 4=HELVETICA_ITALIC, 5=HELVETICA_BOLD_ITALIC
 - Colors must be hex strings: "#RGB" or "#RRGGBB".
@@ -807,60 +823,67 @@ IMPORTANT INSTRUCTIONS:
       content: `${senderName}: ${teacherMessage}`,
     });
 
-    const pdfFormat = z.object({
-      blocks: z.array(
-        z.object({
-          // FormatTypes enum as integer (see src/lib/jsonStyles.ts)
-          // 0: HEADER_1, 1: HEADER_2, 2: HEADER_3, 3: HEADER_4, 4: HEADER_5, 5: HEADER_6,
-          // 6: PARAGRAPH, 7: BULLET, 8: NUMBERED, 9: TABLE, 10: IMAGE, 11: CODE_BLOCK, 12: QUOTE
-          format: z.number().int().min(0).max(12),
-
-          // Content can be a single string or an array of strings
-          // - string: paragraphs, headings, quotes, code block (can contain \n)
-          // - string[]: bullets, numbered lists, or explicit code lines
-          content: z.union([z.string(), z.array(z.string())]),
-
-          // Optional rendering metadata used by the PDF generator
-          metadata: z
-            .object({
-              fontSize: z.number().min(6).optional(),
-              lineHeight: z.number().min(0.6).optional(),
-              paragraphSpacing: z.number().min(0).optional(),
-              indentWidth: z.number().min(0).optional(),
-              paddingX: z.number().min(0).optional(),
-              paddingY: z.number().min(0).optional(),
-
-              // Fonts enum (see src/lib/jsonStyles.ts -> Fonts)
-              // 0: TIMES_ROMAN, 1: COURIER, 2: HELVETICA, 3: HELVETICA_BOLD,
-              // 4: HELVETICA_ITALIC, 5: HELVETICA_BOLD_ITALIC
-              font: z.number().int().min(0).max(5).optional(),
-
-              // Colors as hex strings (#RGB or #RRGGBB)
-              color: z
-                .string()
-                .regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/)
-                .optional(),
-              background: z
-                .string()
-                .regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/)
-                .optional(),
-
-              // Headings alignment
-              align: z.enum(["left", "center", "right"]).optional(),
-            })
-            .strict()
-            .optional(),
-        })
-        .strict()
-      ),
-    }).strict()
 
     const completion = await inferenceClient.chat.completions.create({
       model: 'command-a-03-2025',
       messages,
-      max_tokens: 500,
       temperature: 0.7,
-      response_format: zodResponseFormat(pdfFormat, "pdfFormat"),
+      response_format: {
+        type: "json_object",
+        // @ts-expect-error
+        schema: {
+          type: "object",
+          properties: {
+            text: { type: "string" },
+            docs: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  title: { type: "string" },
+                  blocks: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        format: { type: "integer", minimum: 0, maximum: 12 },
+                        content: {
+                          oneOf: [
+                            { type: "string" },
+                            { type: "array", items: { type: "string" } }
+                          ]
+                        },
+                        metadata: {
+                          type: "object",
+                          properties: {
+                            fontSize: { type: "number", minimum: 6 },
+                            lineHeight: { type: "number", minimum: 0.6 },
+                            paragraphSpacing: { type: "number", minimum: 0 },
+                            indentWidth: { type: "number", minimum: 0 },
+                            paddingX: { type: "number", minimum: 0 },
+                            paddingY: { type: "number", minimum: 0 },
+                            font: { type: "integer", minimum: 0, maximum: 5 },
+                            color: { type: "string", pattern: "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+                            background: { type: "string", pattern: "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+                            align: { type: "string", enum: ["left", "center", "right"] }
+                          },
+                          additionalProperties: false
+                        }
+                      },
+                      required: ["format", "content"],
+                      additionalProperties: false
+                    }
+                  }
+                },
+                required: ["title", "blocks"],
+                additionalProperties: false
+              }
+            }
+          },
+          required: ["text"],
+          additionalProperties: false
+        }
+      },
     });
 
     const response = completion.choices[0]?.message?.content;
@@ -869,27 +892,92 @@ IMPORTANT INSTRUCTIONS:
       throw new Error('No response generated from inference API');
     }
 
-    // Parse the JSON response and generate PDF
+    // Parse the JSON response and generate PDF if docs are provided
     try {
       const jsonData = JSON.parse(response);
-      if (jsonData.blocks && Array.isArray(jsonData.blocks)) {
-        let pdfBytes = await createPdf(jsonData.blocks);
-        logger.info('PDF generated successfully', { labChatId });
-        uploadFile(Buffer.from(pdfBytes).toString('base64'), `${uuidv4()}.pdf`, 'application/pdf')
+
+
+      const attachmentIds: string[] = [];
+      // Generate PDFs if docs are provided
+      if (jsonData.docs && Array.isArray(jsonData.docs)) {
+        
+        for (let i = 0; i < jsonData.docs.length; i++) {
+          const doc = jsonData.docs[i];
+          if (!doc.title || !doc.blocks || !Array.isArray(doc.blocks)) {
+            logger.error(`Document ${i + 1} is missing title or blocks`);
+            continue;
+          } 
+
+          try {
+            let pdfBytes = await createPdf(doc.blocks);            
+            if (pdfBytes) {
+              // Sanitize filename - remove special characters and limit length
+              const sanitizedTitle = doc.title
+                .replace(/[^a-zA-Z0-9\s\-_]/g, '')
+                .replace(/\s+/g, '_')
+                .substring(0, 50);
+              
+              const filename = `${sanitizedTitle}_${uuidv4().substring(0, 8)}.pdf`;
+              
+
+              logger.info(`PDF ${i + 1} generated successfully`, { labChatId, title: doc.title });
+              const gcpResult = await uploadFile(Buffer.from(pdfBytes).toString('base64'), `class/generated/${fullLabChat.classId}/${filename}`, 'application/pdf');
+              logger.info(`PDF ${i + 1} uploaded successfully`, { labChatId, filename });
+
+              const file = await prisma.file.create({
+                data: {
+                  name: filename,
+                  path: `class/generated/${fullLabChat.classId}/${filename}`,
+                  type: 'application/pdf',
+                  userId: fullLabChat.createdById,
+                },
+              });
+              attachmentIds.push(file.id);
+            } else {
+              logger.error(`PDF ${i + 1} creation returned undefined/null`, { labChatId, title: doc.title });
+            }
+          } catch (pdfError) {
+            logger.error(`PDF creation threw an error for document ${i + 1}:`, { 
+              error: pdfError instanceof Error ? {
+                message: pdfError.message,
+                stack: pdfError.stack,
+                name: pdfError.name
+              } : pdfError, 
+              labChatId,
+              title: doc.title
+            });
+          }
+        }
       }
+
+      // Send the text response to the conversation
+      await sendAIMessage(jsonData.text || response, conversationId, {
+        attachments: {
+          connect: attachmentIds.map(id => ({ id })),
+        },
+        subject: fullLabChat.class?.subject || 'Lab',
+      });
     } catch (parseError) {
       logger.error('Failed to parse AI response or generate PDF:', { error: parseError, labChatId });
+      // Fallback: send the raw response if parsing fails
+      await sendAIMessage(response, conversationId, {
+        subject: fullLabChat.class?.subject || 'Lab',
+      });
     }
-
-    // Send AI response
-    await sendAIMessage(response, conversationId, {
-      subject: fullLabChat.class?.subject || 'Lab',
-    });
 
     logger.info('AI response sent', { labChatId, conversationId });
 
   } catch (error) {
-    logger.error('Failed to generate AI response:', { error, labChatId });
+    console.error('Full error object:', error);
+    logger.error('Failed to generate AI response:', { 
+      error: error instanceof Error ? {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      } : error,
+      labChatId 
+    });
+    throw error; // Re-throw to see the full error in the calling function
   }
 }
 

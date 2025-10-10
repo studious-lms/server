@@ -3,6 +3,7 @@ import { createTRPCRouter, protectedProcedure } from '../trpc.js';
 import { prisma } from '../lib/prisma.js';
 import { pusher } from '../lib/pusher.js';
 import { TRPCError } from '@trpc/server';
+import { logger } from '../utils/logger.js';
 
 export const messageRouter = createTRPCRouter({
   list: protectedProcedure
@@ -42,6 +43,13 @@ export const messageRouter = createTRPCRouter({
           }),
         },
         include: {
+          attachments: {
+            select: {
+              id: true,
+              name: true,
+              type: true,
+            },
+          },
           sender: {
             select: {
               id: true,
@@ -90,6 +98,11 @@ export const messageRouter = createTRPCRouter({
           conversationId: message.conversationId,
           createdAt: message.createdAt,
           sender: message.sender,
+          attachments: message.attachments.map((attachment) => ({
+            id: attachment.id,
+            name: attachment.name,
+            type: attachment.type,
+          })),
           mentions: message.mentions.map((mention) => ({
             user: mention.user,
           })),
@@ -198,7 +211,7 @@ export const messageRouter = createTRPCRouter({
           mentionedUserIds,
         });
       } catch (error) {
-        console.error('Failed to broadcast message:', error);
+        logger.error('Failed to broadcast message:', {error});
         // Don't fail the request if Pusher fails
       }
 
@@ -341,7 +354,7 @@ export const messageRouter = createTRPCRouter({
           mentionedUserIds,
         });
       } catch (error) {
-        console.error('Failed to broadcast message update:', error);
+        logger.error('Failed to broadcast message update:', {error});
         // Don't fail the request if Pusher fails
       }
 
@@ -429,7 +442,7 @@ export const messageRouter = createTRPCRouter({
           senderId: existingMessage.senderId,
         });
       } catch (error) {
-        console.error('Failed to broadcast message deletion:', error);
+        logger.error('Failed to broadcast message deletion:', {error});
         // Don't fail the request if Pusher fails
       }
 
@@ -480,7 +493,7 @@ export const messageRouter = createTRPCRouter({
           viewedAt: new Date(),
         });
       } catch (error) {
-        console.error('Failed to broadcast conversation view:', error);
+        logger.error('Failed to broadcast conversation view:', {error});
         // Don't fail the request if Pusher fails
       }
 
@@ -529,7 +542,7 @@ export const messageRouter = createTRPCRouter({
           viewedAt: new Date(),
         });
       } catch (error) {
-        console.error('Failed to broadcast mentions view:', error);
+        logger.error('Failed to broadcast mentions view:', {error});
         // Don't fail the request if Pusher fails
       }
 

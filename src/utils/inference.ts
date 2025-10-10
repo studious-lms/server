@@ -43,6 +43,9 @@ export async function sendAIMessage(
   conversationId: string,
   options: {
     subject?: string;
+    attachments?: {
+      connect: { id: string }[];
+    };
     customSender?: {
       displayName: string;
       profilePicture?: string | null;
@@ -64,6 +67,14 @@ export async function sendAIMessage(
       content,
       senderId: getAIUserId(),
       conversationId,
+      ...(options.attachments && {
+        attachments: {
+          connect: options.attachments.connect,
+        },
+      }),
+    },
+    include: {
+      attachments: true,
     },
   });
 
@@ -93,6 +104,14 @@ export async function sendAIMessage(
       createdAt: aiMessage.createdAt,
       sender: senderInfo,
       mentionedUserIds: [],
+      attachments: aiMessage.attachments.map(attachment => ({
+        id: attachment.id,
+        attachmentId: attachment.id,
+        name: attachment.name,
+        type: attachment.type,
+        size: attachment.size,
+        path: attachment.path,
+      })),
     });
   } catch (error) {
     logger.error('Failed to broadcast AI message:', { error, messageId: aiMessage.id });

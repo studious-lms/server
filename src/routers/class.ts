@@ -107,6 +107,13 @@ export const classRouter = createTRPCRouter({
             select: {
               id: true,
               username: true,
+              profile: {
+                select: {
+                  displayName: true,
+                  profilePicture: true,
+                  profilePictureThumbnail: true,
+                }
+              }
             },
           },
           students: {

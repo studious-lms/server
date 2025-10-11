@@ -87,9 +87,9 @@ export async function sendAIMessage(
   // Prepare sender info
   const senderInfo = {
     id: getAIUserId(),
-    username: 'AI Assistant',
+    username: 'Newton_AI',
     profile: {
-      displayName: options.customSender?.displayName || `${options.subject || 'AI'} Assistant`,
+      displayName: "Newton AI",
       profilePicture: options.customSender?.profilePicture || null,
     },
   };

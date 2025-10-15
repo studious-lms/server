@@ -2,7 +2,8 @@ import { z } from "zod";
 import { createTRPCRouter, protectedClassMemberProcedure, protectedTeacherProcedure, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import { TRPCError } from "@trpc/server";
-import { sendNotifications } from "src/lib/notificationHandler.js";
+import { sendNotifications } from "../lib/notificationHandler.js";
+import { logger } from "../utils/logger.js";
 
 const AnnouncementSelect = {
     id: true,
@@ -79,14 +80,12 @@ export const announcementRouter = createTRPCRouter({
                 select: AnnouncementSelect,
             });
 
-            let notificationTargets: Array<string> = []
-            for (const student of classData.students) {
-                notificationTargets.push(student.id)
-            }
-            await sendNotifications(notificationTargets, {
-                title: `🔔 Announcement for ${classId}`,
+            sendNotifications(classData.students.map(student => student.id), {
+                title: `🔔 Announcement for ${classData.name}`,
                 content: remarks
-            })
+            }).catch(error => {
+                logger.error('Failed to send announcement notifications:');
+            });
 
             return {
                 announcement,

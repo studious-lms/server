@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createTRPCRouter, protectedClassMemberProcedure, protectedTeacherProcedure, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import { TRPCError } from "@trpc/server";
+import { sendNotifications } from "src/lib/notificationHandler.js";
 
 const AnnouncementSelect = {
     id: true,
@@ -42,9 +43,28 @@ export const announcementRouter = createTRPCRouter({
             remarks: z.string(),
         }))
         .mutation(async ({ ctx, input }) => {
+            const classId = input.classId
+            const remarks = input.remarks
+
+            const classData = await prisma.class.findUnique({
+                where: { id: classId },
+                include: {
+                  students: {
+                    select: { id: true }
+                  }
+                }
+            });
+
+            if (!classData) {
+                throw new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "Class not found",
+                });
+            }
+
             const announcement = await prisma.announcement.create({
                 data: {
-                    remarks: input.remarks,
+                    remarks: remarks,
                     teacher: {
                         connect: {
                             id: ctx.user?.id,
@@ -52,12 +72,21 @@ export const announcementRouter = createTRPCRouter({
                     },
                     class: {
                         connect: {
-                            id: input.classId,
+                            id: classId,
                         },
                     },
                 },
                 select: AnnouncementSelect,
             });
+
+            let notificationTargets: Array<string> = []
+            for (const student of classData.students) {
+                notificationTargets.push(student.id)
+            }
+            await sendNotifications(notificationTargets, {
+                title: `🔔 Announcement for ${classId}`,
+                content: remarks
+            })
 
             return {
                 announcement,

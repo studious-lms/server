@@ -4,6 +4,8 @@ import { TRPCError } from "@trpc/server";
 import { prisma } from "../lib/prisma.js";
 import { uploadFiles, type UploadedFile } from "../lib/fileUpload.js";
 import { deleteFile } from "../lib/googleCloudStorage.js";
+import { sendNotifications } from "../lib/notificationHandler.js";
+import { logger } from "../utils/logger.js";
 
 const fileSchema = z.object({
   name: z.string(),
@@ -328,6 +330,16 @@ export const assignmentRouter = createTRPCRouter({
           }
         });
       }
+      
+      sendNotifications(classData.students.map(student => student.id), {
+        title: `🔔 New assignment for ${classData.name}`,
+        content:
+        `The assignment "${title}" has been created in ${classData.name}.\n
+        Due date: ${new Date(dueDate).toLocaleDateString()}.
+        [Link to assignment](/class/${classId}/assignments/${assignment.id})`
+      }).catch(error => {
+        logger.error('Failed to send assignment notifications:');
+      });
 
       return assignment;
     }),

@@ -2,6 +2,8 @@ import { z } from "zod";
 import { createTRPCRouter, protectedClassMemberProcedure, protectedTeacherProcedure, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import { TRPCError } from "@trpc/server";
+import { sendNotifications } from "../lib/notificationHandler.js";
+import { logger } from "../utils/logger.js";
 
 const AnnouncementSelect = {
     id: true,
@@ -42,9 +44,28 @@ export const announcementRouter = createTRPCRouter({
             remarks: z.string(),
         }))
         .mutation(async ({ ctx, input }) => {
+            const classId = input.classId
+            const remarks = input.remarks
+
+            const classData = await prisma.class.findUnique({
+                where: { id: classId },
+                include: {
+                  students: {
+                    select: { id: true }
+                  }
+                }
+            });
+
+            if (!classData) {
+                throw new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "Class not found",
+                });
+            }
+
             const announcement = await prisma.announcement.create({
                 data: {
-                    remarks: input.remarks,
+                    remarks: remarks,
                     teacher: {
                         connect: {
                             id: ctx.user?.id,
@@ -52,11 +73,18 @@ export const announcementRouter = createTRPCRouter({
                     },
                     class: {
                         connect: {
-                            id: input.classId,
+                            id: classId,
                         },
                     },
                 },
                 select: AnnouncementSelect,
+            });
+
+            sendNotifications(classData.students.map(student => student.id), {
+                title: `🔔 Announcement for ${classData.name}`,
+                content: remarks
+            }).catch(error => {
+                logger.error('Failed to send announcement notifications:');
             });
 
             return {

@@ -126,10 +126,10 @@ io.engine.on('connection_error', (err: Error) => {
 setupSocketHandlers(io);
 
 // File serving endpoint for secure file access
-app.get('/api/files/:filePath', async (req, res) => {
+app.get('/api/files/:fileId', async (req, res) => {
   try {
-    const filePath = decodeURIComponent(req.params.filePath);
-    console.log('File request:', { filePath, originalPath: req.params.filePath });
+    const fileId = decodeURIComponent(req.params.fileId);
+    // console.log('File request:', { fileId, originalPath: req.params.fileId });
     
     // Get user from request headers
     const userHeader = req.headers['x-user'];
@@ -160,7 +160,7 @@ app.get('/api/files/:filePath', async (req, res) => {
 
     // Find file in database by path
     const fileRecord = await prisma.file.findFirst({
-      where: { path: filePath },
+      where: { id: fileId },
       include: {
         user: true,
         assignment: {
@@ -288,12 +288,12 @@ app.get('/api/files/:filePath', async (req, res) => {
       return res.status(403).json({ error: 'Access denied - insufficient permissions' });
     }
     
+    const filePath = fileRecord.path;
+    
     // Get file from Google Cloud Storage
     const file = bucket.file(filePath);
     const [exists] = await file.exists();
-    
-    console.log('File exists:', exists, 'for path:', filePath);
-    
+        
     if (!exists) {
       return res.status(404).json({ error: 'File not found in storage', filePath });
     }
@@ -314,14 +314,14 @@ app.get('/api/files/:filePath', async (req, res) => {
     stream.pipe(res);
     
     stream.on('error', (error) => {
-      console.error('Error streaming file:', error);
+      logger.error('Error streaming file:', {error});
       if (!res.headersSent) {
         res.status(500).json({ error: 'Error streaming file' });
       }
     });
     
   } catch (error) {
-    console.error('Error serving file:', error);
+    logger.error('Error serving file:', {error});
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -338,7 +338,6 @@ app.put('/api/upload/:filePath', async (req, res) => {
 function handleFileUpload(req: any, res: any) {
   try {
     const filePath = decodeURIComponent(req.params.filePath);
-    console.log('File upload request:', { filePath, originalPath: req.params.filePath, method: req.method });
     
     // Set CORS headers for upload endpoint
     const origin = req.headers.origin;
@@ -375,14 +374,13 @@ function handleFileUpload(req: any, res: any) {
     
     // Handle stream events
     writeStream.on('error', (error) => {
-      console.error('Error uploading file:', error);
+      logger.error('Error uploading file:', {error});
       if (!res.headersSent) {
         res.status(500).json({ error: 'Error uploading file' });
       }
     });
     
     writeStream.on('finish', () => {
-      console.log('File uploaded successfully:', filePath);
       res.status(200).json({ 
         success: true, 
         filePath,
@@ -394,7 +392,7 @@ function handleFileUpload(req: any, res: any) {
     req.pipe(writeStream);
     
   } catch (error) {
-    console.error('Error handling file upload:', error);
+    logger.error('Error handling file upload:', {error});
     res.status(500).json({ error: 'Internal server error' });
   }
 }

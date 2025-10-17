@@ -793,7 +793,7 @@ WHEN CREATING COURSE MATERIALS (docs field):
 - Colors must be hex strings: "#RGB" or "#RRGGBB".
 - Headings (0-5): content is a single string; you may set metadata.align.
 - Paragraphs (6) and Quotes (12): content is a single string.
-- Bullets (7) and Numbered (8): content is an array of strings (one item per list entry).
+- Bullets (7) and Numbered (8): content is an array of strings (one item per list entry). DO NOT include bullet symbols (*) or numbers (1. 2. 3.) in the content - the format will automatically add these.
 - Code blocks (11): prefer content as an array of lines; preserve indentation via leading tabs/spaces. If using a single string, include \n between lines.
 - Table (9) and Image (10) are not supported by the renderer now; do not emit them.
 - Use metadata sparingly; omit fields you don't need. For code blocks you may set metadata.paddingX, paddingY, background, and font (1 for Courier).
@@ -901,12 +901,15 @@ WHEN CREATING COURSE MATERIALS (docs field):
       // Generate PDFs if docs are provided
       if (jsonData.docs && Array.isArray(jsonData.docs)) {
         
+
+        console.log('Generating PDFs', { labChatId, docs: JSON.stringify(jsonData.docs, null, 2) });
         for (let i = 0; i < jsonData.docs.length; i++) {
           const doc = jsonData.docs[i];
           if (!doc.title || !doc.blocks || !Array.isArray(doc.blocks)) {
             logger.error(`Document ${i + 1} is missing title or blocks`);
             continue;
           } 
+
 
           try {
             let pdfBytes = await createPdf(doc.blocks);            

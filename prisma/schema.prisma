@@ -189,6 +189,9 @@ model File {
   message Message? @relation("MessageAttachments", fields: [messageId], references: [id], onDelete: Cascade)
 
   schools      School[]
+
+  schoolDevelopementProgram SchoolDevelopementProgram? @relation("SchoolDevelopementProgramSupportingDocumentation", fields: [schoolDevelopementProgramId], references: [id], onDelete: Cascade)
+  schoolDevelopementProgramId String?
 }
 
 model Assignment {
@@ -397,4 +400,38 @@ model Mention {
   user User @relation("UserMentions", fields: [userId], references: [id], onDelete: Cascade)
   
   @@unique([messageId, userId])
+}
+
+
+model SchoolDevelopementProgram {
+  id String @id
+  name String
+  type String
+  address String
+  city String
+  country String
+  numberOfStudents Int
+  numberOfTeachers Int
+  website String?
+
+  contactName String?
+  contactRole String?
+  contactEmail String?
+  contactPhone String? @default("")
+  eligibilityInformation String?
+  whyHelp String?
+  additionalInformation String?
+  submittedAt DateTime? @default(now())
+  reviewedAt DateTime?
+
+  status String @default("PENDING") // PENDING, APPROVED, REJECTED, REFERRED
+
+  supportingDocumentation File[] @relation("SchoolDevelopementProgramSupportingDocumentation")
+}
+
+model EarlyAccessRequest {
+  id String @id @default(uuid())
+  email String
+  createdAt DateTime @default(now())
+  institutionSize String
 }

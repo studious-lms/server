@@ -1,4 +1,7 @@
 import { PDFDocument, PDFFont, RGB, StandardFonts, last, rgb } from 'pdf-lib'
+import fontkit from '@pdf-lib/fontkit'
+import { readFileSync } from 'fs'
+import { join } from 'path'
 import { writeFile } from 'fs'
 import { DocumentBlock, FormatTypes, Fonts } from './jsonStyles.js'
 
@@ -7,14 +10,40 @@ export async function createPdf(blocks: DocumentBlock[]) {
     try {
         const pdfDoc = await PDFDocument.create()
         console.log('createPdf: PDFDocument created successfully');
-        const timesRomanFont = await pdfDoc.embedFont(StandardFonts.TimesRoman)
-    const courierFont = await pdfDoc.embedFont(StandardFonts.Courier)
-    const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica)
-    const helveticaBoldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
-    const helveticaItalicFont = await pdfDoc.embedFont(StandardFonts.HelveticaOblique)
-    const helveticaBoldItalicFont = await pdfDoc.embedFont(StandardFonts.HelveticaBoldOblique)
+        
+        // Register fontkit to enable custom font embedding
+        pdfDoc.registerFontkit(fontkit)
+        
+        // Load Unicode-compatible fonts (Noto Sans)
+        const fontDir = join(process.cwd(), 'src', 'lib')
+        
+        let notoSansRegular: PDFFont
+        let notoSansBold: PDFFont
+        let notoSansItalic: PDFFont
+        let courierFont: PDFFont
+        
+        try {
+            // Try to load custom Unicode fonts
+            const regularFontBytes = readFileSync(join(fontDir, 'NotoSans-Regular.ttf'))
+            const boldFontBytes = readFileSync(join(fontDir, 'NotoSans-Bold.ttf'))
+            const italicFontBytes = readFileSync(join(fontDir, 'NotoSans-Italic.ttf'))
+            
+            notoSansRegular = await pdfDoc.embedFont(regularFontBytes)
+            notoSansBold = await pdfDoc.embedFont(boldFontBytes)
+            notoSansItalic = await pdfDoc.embedFont(italicFontBytes)
+            courierFont = await pdfDoc.embedFont(StandardFonts.Courier) // Keep Courier for code blocks
+            
+            console.log('createPdf: Unicode fonts loaded successfully');
+        } catch (fontError) {
+            console.warn('createPdf: Failed to load custom fonts, falling back to standard fonts:', fontError);
+            // Fallback to standard fonts if custom fonts fail
+            notoSansRegular = await pdfDoc.embedFont(StandardFonts.Helvetica)
+            notoSansBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
+            notoSansItalic = await pdfDoc.embedFont(StandardFonts.HelveticaOblique)
+            courierFont = await pdfDoc.embedFont(StandardFonts.Courier)
+        }
 
-    const defaultFont = helveticaFont
+    const defaultFont = notoSansRegular
     const defaultParagraphSpacing = 10;
     const defaultLineHeight = 1.3
     const defaultFontSize = 12
@@ -25,23 +54,23 @@ export async function createPdf(blocks: DocumentBlock[]) {
     const paragraphColor = rgb(0.15, 0.15, 0.15)
 
     const FONTS: Record<number, PDFFont> = {
-        [Fonts.TIMES_ROMAN]: timesRomanFont,
+        [Fonts.TIMES_ROMAN]: notoSansRegular, // Use Noto Sans instead of Times
         [Fonts.COURIER]: courierFont,
-        [Fonts.HELVETICA]: helveticaFont,
-        [Fonts.HELVETICA_BOLD]: helveticaBoldFont,
-        [Fonts.HELVETICA_ITALIC]: helveticaItalicFont,
-        [Fonts.HELVETICA_BOLD_ITALIC]: helveticaBoldItalicFont,
+        [Fonts.HELVETICA]: notoSansRegular,
+        [Fonts.HELVETICA_BOLD]: notoSansBold,
+        [Fonts.HELVETICA_ITALIC]: notoSansItalic,
+        [Fonts.HELVETICA_BOLD_ITALIC]: notoSansBold, // Use bold for now, could add bold-italic later
     }
 
     const STYLE_PRESETS: Record<number,
         { fontSize: number; lineHeight: number; paragraphSpacing?: number; font?: PDFFont; color?: RGB; background?: RGB }> =
     {
-        [FormatTypes.HEADER_1]: { fontSize: 28, lineHeight: 1.35, font: helveticaBoldFont, color: headingColor },
-        [FormatTypes.HEADER_2]: { fontSize: 22, lineHeight: 1.35, font: helveticaBoldFont, color: headingColor },
-        [FormatTypes.HEADER_3]: { fontSize: 18, lineHeight: 1.35, font: helveticaBoldFont, color: headingColor },
-        [FormatTypes.HEADER_4]: { fontSize: 16, lineHeight: 1.3, font: helveticaBoldFont, color: headingColor },
-        [FormatTypes.HEADER_5]: { fontSize: 14, lineHeight: 1.3, font: helveticaBoldFont, color: headingColor },
-        [FormatTypes.HEADER_6]: { fontSize: 12, lineHeight: 1.3, font: helveticaBoldFont, color: headingColor },
+        [FormatTypes.HEADER_1]: { fontSize: 28, lineHeight: 1.35, font: notoSansBold, color: headingColor },
+        [FormatTypes.HEADER_2]: { fontSize: 22, lineHeight: 1.35, font: notoSansBold, color: headingColor },
+        [FormatTypes.HEADER_3]: { fontSize: 18, lineHeight: 1.35, font: notoSansBold, color: headingColor },
+        [FormatTypes.HEADER_4]: { fontSize: 16, lineHeight: 1.3, font: notoSansBold, color: headingColor },
+        [FormatTypes.HEADER_5]: { fontSize: 14, lineHeight: 1.3, font: notoSansBold, color: headingColor },
+        [FormatTypes.HEADER_6]: { fontSize: 12, lineHeight: 1.3, font: notoSansBold, color: headingColor },
         [FormatTypes.QUOTE]: { fontSize: 14, lineHeight: 1.5, color: rgb(0.35, 0.35, 0.35) },
         [FormatTypes.CODE_BLOCK]: { fontSize: 12, lineHeight: 1.6, font: courierFont, color: rgb(0.1, 0.1, 0.1), background: rgb(0.95, 0.95, 0.95) },
         [FormatTypes.PARAGRAPH]: { fontSize: 12, lineHeight: 1.3, color: paragraphColor },
@@ -73,26 +102,173 @@ export async function createPdf(blocks: DocumentBlock[]) {
         }
     }
 
-    // Function to replace Unicode characters that can't be encoded by WinAnsi
+    // Minimal sanitization - only remove truly problematic invisible characters
+    // With Unicode fonts, we can now keep most characters as-is
     const sanitizeText = (text: string): string => {
         return text
-            .replace(/→/g, '->')  // Right arrow
-            .replace(/←/g, '<-')  // Left arrow
-            .replace(/↑/g, '^')   // Up arrow
-            .replace(/↓/g, 'v')   // Down arrow
-            .replace(/•/g, '*')   // Bullet point
-            .replace(/–/g, '-')   // En dash
-            .replace(/—/g, '--')  // Em dash
-            .replace(/'/g, "'")   // Left single quote
-            .replace(/'/g, "'")   // Right single quote
-            .replace(/"/g, '"')   // Left double quote
-            .replace(/"/g, '"')   // Right double quote
-            .replace(/…/g, '...')  // Ellipsis
-            .replace(/°/g, ' degrees') // Degree symbol
-            .replace(/±/g, '+/-')  // Plus-minus
-            .replace(/×/g, 'x')    // Multiplication sign
-            .replace(/÷/g, '/')    // Division sign
-            // Add more replacements as needed
+            // Only remove invisible/control characters that break PDF generation
+            .replace(/\uFEFF/g, '') // Remove BOM (Byte Order Mark)
+            .replace(/\u200B/g, '') // Remove zero-width space
+            .replace(/\u200C/g, '') // Remove zero-width non-joiner
+            .replace(/\u200D/g, '') // Remove zero-width joiner
+            .replace(/\uFFFD/g, '?') // Replace replacement character with ?
+            // Keep ALL visible Unicode characters - Noto Sans supports them!
+    }
+
+    // Parse markdown and return styled text segments
+    interface TextSegment {
+        text: string;
+        font: PDFFont;
+        color: RGB;
+    }
+
+    const parseMarkdown = (text: string, baseFont: PDFFont, baseColor: RGB): TextSegment[] => {
+        const segments: TextSegment[] = [];
+        let currentIndex = 0;
+        
+        // Regex patterns for markdown
+        const patterns = [
+            { regex: /\*\*(.*?)\*\*/g, font: notoSansBold },           // **bold**
+            { regex: /__(.*?)__/g, font: notoSansBold },               // __bold__
+            { regex: /\*(.*?)\*/g, font: notoSansItalic },             // *italic*
+            { regex: /_(.*?)_/g, font: notoSansItalic },               // _italic_
+            { regex: /`(.*?)`/g, font: courierFont, color: rgb(0.2, 0.2, 0.2) }, // `code`
+        ];
+
+        // Find all markdown matches
+        const matches: Array<{start: number, end: number, text: string, font: PDFFont, color?: RGB}> = [];
+        
+        for (const pattern of patterns) {
+            let match;
+            pattern.regex.lastIndex = 0; // Reset regex
+            while ((match = pattern.regex.exec(text)) !== null) {
+                matches.push({
+                    start: match.index,
+                    end: match.index + match[0].length,
+                    text: match[1], // Captured group (content without markdown syntax)
+                    font: pattern.font,
+                    color: pattern.color
+                });
+            }
+        }
+
+        // Sort matches by start position
+        matches.sort((a, b) => a.start - b.start);
+
+        // Remove overlapping matches (keep the first one)
+        const filteredMatches: Array<{start: number, end: number, text: string, font: PDFFont, color?: RGB}> = [];
+        for (const match of matches) {
+            const hasOverlap = filteredMatches.some(existing => 
+                (match.start < existing.end && match.end > existing.start)
+            );
+            if (!hasOverlap) {
+                filteredMatches.push(match);
+            }
+        }
+
+        // Build segments
+        for (const match of filteredMatches) {
+            // Add text before this match
+            if (match.start > currentIndex) {
+                const beforeText = text.substring(currentIndex, match.start);
+                if (beforeText) {
+                    segments.push({
+                        text: sanitizeText(beforeText),
+                        font: baseFont,
+                        color: baseColor
+                    });
+                }
+            }
+
+            // Add the styled match
+            segments.push({
+                text: sanitizeText(match.text),
+                font: match.font,
+                color: match.color || baseColor
+            });
+
+            currentIndex = match.end;
+        }
+
+        // Add remaining text
+        if (currentIndex < text.length) {
+            const remainingText = text.substring(currentIndex);
+            if (remainingText) {
+                segments.push({
+                    text: sanitizeText(remainingText),
+                    font: baseFont,
+                    color: baseColor
+                });
+            }
+        }
+
+        // If no markdown was found, return the whole text as one segment
+        if (segments.length === 0) {
+            segments.push({
+                text: sanitizeText(text),
+                font: baseFont,
+                color: baseColor
+            });
+        }
+
+        return segments;
+    }
+
+    // Enhanced text wrapping that handles styled segments
+    const wrapStyledText = (segments: TextSegment[], fontSize: number, maxWidth: number): Array<{segments: TextSegment[], width: number}> => {
+        const lines: Array<{segments: TextSegment[], width: number}> = [];
+        let currentLine: TextSegment[] = [];
+        let currentWidth = 0;
+
+        for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
+            const segment = segments[segmentIndex];
+            const words = segment.text.split(/\s+/).filter(word => word.length > 0);
+            
+            for (let i = 0; i < words.length; i++) {
+                const word = words[i];
+                const wordWidth = segment.font.widthOfTextAtSize(word, fontSize);
+                const spaceWidth = segment.font.widthOfTextAtSize(' ', fontSize);
+                
+                // Add space before word if:
+                // 1. Not the first word in the line AND
+                // 2. (Not the first word in the segment OR not the first segment)
+                const needSpace = currentLine.length > 0 && (i > 0 || segmentIndex > 0);
+                const totalWidth = wordWidth + (needSpace ? spaceWidth : 0);
+
+                // Check if we need to wrap to new line
+                if (currentWidth + totalWidth > maxWidth && currentLine.length > 0) {
+                    // Finish current line
+                    lines.push({ segments: [...currentLine], width: currentWidth });
+                    currentLine = [];
+                    currentWidth = 0;
+                }
+
+                // Add the word to current line
+                if (needSpace && currentLine.length > 0) {
+                    // Try to merge with last segment if same font and color
+                    const lastSegment = currentLine[currentLine.length - 1];
+                    if (lastSegment.font === segment.font && lastSegment.color === segment.color) {
+                        lastSegment.text += ' ' + word;
+                        currentWidth += spaceWidth + wordWidth;
+                    } else {
+                        // Add space + word as new segment
+                        currentLine.push({ text: ' ' + word, font: segment.font, color: segment.color });
+                        currentWidth += spaceWidth + wordWidth;
+                    }
+                } else {
+                    // Add word without space (first word in line or first word overall)
+                    currentLine.push({ text: word, font: segment.font, color: segment.color });
+                    currentWidth += wordWidth;
+                }
+            }
+        }
+
+        // Add final line if it has content
+        if (currentLine.length > 0) {
+            lines.push({ segments: currentLine, width: currentWidth });
+        }
+
+        return lines.length > 0 ? lines : [{ segments: [{ text: '', font: defaultFont, color: rgb(0, 0, 0) }], width: 0 }];
     }
 
     let page = pdfDoc.addPage()
@@ -204,42 +380,57 @@ export async function createPdf(blocks: DocumentBlock[]) {
         }
 
         const drawParagraph = (text: string) => {
-            const sanitizedText = sanitizeText(text)
-            const lines = wrapText(sanitizedText, font, fontSize, maxTextWidth())
+            const segments = parseMarkdown(text, font, color);
+            const lines = wrapStyledText(segments, fontSize, maxTextWidth());
+            
             for (const line of lines) {
-                ensureSpace(lineHeight)
-                page.drawText(line, {
-                    x: marginLeft,
-                    y: y,
-                    size: fontSize,
-                    font: font,
-                    color: color,
-                })
-                y -= lineHeight
+                ensureSpace(lineHeight);
+                let currentX = marginLeft;
+                
+                for (const segment of line.segments) {
+                    if (segment.text.trim()) {
+                        page.drawText(segment.text, {
+                            x: currentX,
+                            y: y,
+                            size: fontSize,
+                            font: segment.font,
+                            color: segment.color,
+                        });
+                        currentX += segment.font.widthOfTextAtSize(segment.text, fontSize);
+                    }
+                }
+                y -= lineHeight;
             }
         }
 
         const drawHeading = (text: string, align?: 'left' | 'center' | 'right') => {
-            const sanitizedText = sanitizeText(text)
-            const lines = wrapText(sanitizedText, font, fontSize, maxTextWidth())
+            const segments = parseMarkdown(text, font, color);
+            const lines = wrapStyledText(segments, fontSize, maxTextWidth());
+            
             for (const line of lines) {
-                ensureSpace(lineHeight)
-                let x = marginLeft
+                ensureSpace(lineHeight);
+                let startX = marginLeft;
+                
                 if (align === 'center') {
-                    const tw = font.widthOfTextAtSize(line, fontSize)
-                    x = marginLeft + (maxTextWidth() - tw) / 2
+                    startX = marginLeft + (maxTextWidth() - line.width) / 2;
                 } else if (align === 'right') {
-                    const tw = font.widthOfTextAtSize(line, fontSize)
-                    x = marginLeft + maxTextWidth() - tw
+                    startX = marginLeft + maxTextWidth() - line.width;
                 }
-                page.drawText(line, {
-                    x,
-                    y: y,
-                    size: fontSize,
-                    font: font,
-                    color: color,
-                })
-                y -= lineHeight
+                
+                let currentX = startX;
+                for (const segment of line.segments) {
+                    if (segment.text.trim()) {
+                        page.drawText(segment.text, {
+                            x: currentX,
+                            y: y,
+                            size: fontSize,
+                            font: segment.font,
+                            color: segment.color,
+                        });
+                        currentX += segment.font.widthOfTextAtSize(segment.text, fontSize);
+                    }
+                }
+                y -= lineHeight;
             }
         }
 
@@ -248,37 +439,41 @@ export async function createPdf(blocks: DocumentBlock[]) {
             const gap = 8
             const contentWidth = maxTextWidth() - (bulletIndent + gap)
             for (const item of items) {
-                const sanitizedItem = sanitizeText(item)
-                const lines = wrapText(sanitizedItem, font, fontSize, contentWidth)
-                ensureSpace(lineHeight)
-                // Bullet glyph (use ASCII bullet instead of Unicode)
-                page.drawText('*', {
-                    x: marginLeft + gap,
-                    y: y,
-                    size: fontSize,
-                    font: font,
-                    color: color,
-                })
-                // First line
-                page.drawText(lines[0], {
-                    x: marginLeft + bulletIndent + gap,
-                    y: y,
-                    size: fontSize,
-                    font: font,
-                    color: color,
-                })
-                y -= lineHeight
-                // Continuation lines with hanging indent
-                for (let i = 1; i < lines.length; i++) {
-                    ensureSpace(lineHeight)
-                    page.drawText(lines[i], {
-                        x: marginLeft + bulletIndent + gap,
-                        y: y,
-                        size: fontSize,
-                        font: font,
-                        color: color,
-                    })
-                    y -= lineHeight
+                // Clean up any bullet symbols that the AI might have added
+                const cleanItem = item.replace(/^\s*[•*-]\s*/, '').trim();
+                const segments = parseMarkdown(cleanItem, font, color);
+                const lines = wrapStyledText(segments, fontSize, contentWidth);
+                
+                for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+                    const line = lines[lineIndex];
+                    ensureSpace(lineHeight);
+                    
+                    // Draw bullet only on first line
+                    if (lineIndex === 0) {
+                        page.drawText('•', {
+                            x: marginLeft + gap,
+                            y: y,
+                            size: fontSize,
+                            font: font,
+                            color: color,
+                        });
+                    }
+                    
+                    // Draw styled text
+                    let currentX = marginLeft + bulletIndent + gap;
+                    for (const segment of line.segments) {
+                        if (segment.text.trim()) {
+                            page.drawText(segment.text, {
+                                x: currentX,
+                                y: y,
+                                size: fontSize,
+                                font: segment.font,
+                                color: segment.color,
+                            });
+                            currentX += segment.font.widthOfTextAtSize(segment.text, fontSize);
+                        }
+                    }
+                    y -= lineHeight;
                 }
             }
         }
@@ -289,38 +484,45 @@ export async function createPdf(blocks: DocumentBlock[]) {
             const contentWidth = maxTextWidth() - (numberIndent + gap)
             let index = 1
             for (const item of items) {
+                // Clean up any numbers that the AI might have added
+                const cleanItem = item.replace(/^\s*\d+\.\s*/, '').trim();
                 const numLabel = `${index}.`
                 const numWidth = font.widthOfTextAtSize(numLabel, fontSize)
-                const sanitizedItem = sanitizeText(item)
-                const lines = wrapText(sanitizedItem, font, fontSize, contentWidth)
-                ensureSpace(lineHeight)
-                page.drawText(numLabel, {
-                    x: marginLeft + gap,
-                    y: y,
-                    size: fontSize,
-                    font: font,
-                    color: color,
-                })
-                page.drawText(lines[0], {
-                    x: marginLeft + Math.max(numberIndent, numWidth + 6) + gap,
-                    y: y,
-                    size: fontSize,
-                    font: font,
-                    color: color,
-                })
-                y -= lineHeight
-                for (let i = 1; i < lines.length; i++) {
-                    ensureSpace(lineHeight)
-                    page.drawText(lines[i], {
-                        x: marginLeft + Math.max(numberIndent, numWidth + 6) + gap,
-                        y: y,
-                        size: fontSize,
-                        font: font,
-                        color: color,
-                    })
-                    y -= lineHeight
+                const segments = parseMarkdown(cleanItem, font, color);
+                const lines = wrapStyledText(segments, fontSize, contentWidth);
+                
+                for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+                    const line = lines[lineIndex];
+                    ensureSpace(lineHeight);
+                    
+                    // Draw number only on first line
+                    if (lineIndex === 0) {
+                        page.drawText(numLabel, {
+                            x: marginLeft + gap,
+                            y: y,
+                            size: fontSize,
+                            font: font,
+                            color: color,
+                        });
+                    }
+                    
+                    // Draw styled text
+                    let currentX = marginLeft + Math.max(numberIndent, numWidth + 6) + gap;
+                    for (const segment of line.segments) {
+                        if (segment.text.trim()) {
+                            page.drawText(segment.text, {
+                                x: currentX,
+                                y: y,
+                                size: fontSize,
+                                font: segment.font,
+                                color: segment.color,
+                            });
+                            currentX += segment.font.widthOfTextAtSize(segment.text, fontSize);
+                        }
+                    }
+                    y -= lineHeight;
                 }
-                index++
+                index++;
             }
         }
 
@@ -329,14 +531,15 @@ export async function createPdf(blocks: DocumentBlock[]) {
             const ruleGap = 8
             const contentX = marginLeft + ruleWidth + ruleGap
             const contentWidth = maxTextWidth() - (ruleWidth + ruleGap)
-            const sanitizedText = sanitizeText(text)
-            const lines = wrapText(sanitizedText, font, fontSize, contentWidth)
+            const segments = parseMarkdown(text, font, color);
+            const lines = wrapStyledText(segments, fontSize, contentWidth);
             const totalHeight = lines.length * lineHeight + fontSize
             var remainingHeight = totalHeight
+            
             for (const line of lines) {
                 let pageAdded = ensureSpace(lineHeight)
                 if (pageAdded || remainingHeight == totalHeight) {
-                    let blockHeight = Math.floor(Math.min(remainingHeight, y - marginBottom) / lineHeight) * lineHeight // Get remaining height on page
+                    let blockHeight = Math.floor(Math.min(remainingHeight, y - marginBottom) / lineHeight) * lineHeight
                     page.drawRectangle({
                         x: marginLeft,
                         y: y + lineHeight,
@@ -346,14 +549,22 @@ export async function createPdf(blocks: DocumentBlock[]) {
                     })
                     remainingHeight -= blockHeight + lineHeight - fontSize
                 }
-                page.drawText(line, {
-                    x: contentX,
-                    y: y,
-                    size: fontSize,
-                    font: font,
-                    color: color,
-                })
-                y -= lineHeight
+                
+                // Draw styled text
+                let currentX = contentX;
+                for (const segment of line.segments) {
+                    if (segment.text.trim()) {
+                        page.drawText(segment.text, {
+                            x: currentX,
+                            y: y,
+                            size: fontSize,
+                            font: segment.font,
+                            color: segment.color,
+                        });
+                        currentX += segment.font.widthOfTextAtSize(segment.text, fontSize);
+                    }
+                }
+                y -= lineHeight;
             }
             y -= lineHeight - fontSize
         }

@@ -16,6 +16,7 @@ import { notificationRouter } from "./notifications.js";
 import { conversationRouter } from "./conversation.js";
 import { messageRouter } from "./message.js";
 import { labChatRouter } from "./labChat.js";
+import { marketingRouter } from "./marketing.js";
 
 export const appRouter = createTRPCRouter({
   class: classRouter,
@@ -33,6 +34,7 @@ export const appRouter = createTRPCRouter({
   conversation: conversationRouter,
   message: messageRouter,
   labChat: labChatRouter,
+  marketing: marketingRouter,
 }); 
 
 // Export type router type definition

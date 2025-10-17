@@ -10,6 +10,7 @@ import { createTRPCContext, createCallerFactory } from './trpc.js';
 import { logger } from './utils/logger.js';
 import { setupSocketHandlers } from './socket/handlers.js';
 import { bucket } from './lib/googleCloudStorage.js';
+import { prisma } from './lib/prisma.js';
 
 dotenv.config();
 
@@ -130,6 +131,140 @@ app.get('/api/files/:filePath', async (req, res) => {
     const filePath = decodeURIComponent(req.params.filePath);
     console.log('File request:', { filePath, originalPath: req.params.filePath });
     
+    // Get user from request headers
+    const userHeader = req.headers['x-user'];
+    if (!userHeader) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const token = typeof userHeader === 'string' ? userHeader : userHeader[0];
+
+    // Find user by session token
+    const user = await prisma.user.findFirst({
+      where: {
+        sessions: {
+          some: {
+            id: token
+          }
+        }
+      },
+      select: {
+        id: true,
+        username: true,
+      }
+    });
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired session' });
+    }
+
+    // Find file in database by path
+    const fileRecord = await prisma.file.findFirst({
+      where: { path: filePath },
+      include: {
+        user: true,
+        assignment: {
+          include: {
+            class: {
+              include: {
+                students: true,
+                teachers: true
+              }
+            }
+          }
+        },
+        submission: {
+          include: {
+            student: true,
+            assignment: {
+              include: {
+                class: {
+                  include: {
+                    teachers: true
+                  }
+                }
+              }
+            }
+          }
+        },
+        folder: {
+          include: {
+            class: {
+              include: {
+                students: true,
+                teachers: true
+              }
+            }
+          }
+        },
+        classDraft: {
+          include: {
+            students: true,
+            teachers: true
+          }
+        }
+      }
+    });
+
+    if (!fileRecord) {
+      return res.status(404).json({ error: 'File not found in database' });
+    }
+
+    // Check if user has permission to access this file
+    let hasPermission = false;
+
+    // Check if user created the file
+    if (fileRecord.userId === user.id) {
+      hasPermission = true;
+    }
+
+    // Check if file is related to a class where user is a member
+    if (!hasPermission) {
+      // Check assignment files
+      if (fileRecord.assignment?.class) {
+        const classData = fileRecord.assignment.class;
+        const isStudent = classData.students.some(student => student.id === user.id);
+        const isTeacher = classData.teachers.some(teacher => teacher.id === user.id);
+        if (isStudent || isTeacher) {
+          hasPermission = true;
+        }
+      }
+
+      // Check submission files (student can access their own submissions, teachers can access all submissions in their class)
+      if (!hasPermission && fileRecord.submission) {
+        const submission = fileRecord.submission;
+        if (submission.studentId === user.id) {
+          hasPermission = true; // Student accessing their own submission
+        } else if (submission.assignment?.class?.teachers.some(teacher => teacher.id === user.id)) {
+          hasPermission = true; // Teacher accessing submission in their class
+        }
+      }
+
+      // Check folder files
+      if (!hasPermission && fileRecord.folder?.class) {
+        const classData = fileRecord.folder.class;
+        const isStudent = classData.students.some(student => student.id === user.id);
+        const isTeacher = classData.teachers.some(teacher => teacher.id === user.id);
+        if (isStudent || isTeacher) {
+          hasPermission = true;
+        }
+      }
+
+      // Check class draft files
+      if (!hasPermission && fileRecord.classDraft) {
+        const classData = fileRecord.classDraft;
+        const isStudent = classData.students.some(student => student.id === user.id);
+        const isTeacher = classData.teachers.some(teacher => teacher.id === user.id);
+        if (isStudent || isTeacher) {
+          hasPermission = true;
+        }
+      }
+    }
+
+    if (!hasPermission) {
+      return res.status(403).json({ error: 'Access denied - insufficient permissions' });
+    }
+    
     // Get file from Google Cloud Storage
     const file = bucket.file(filePath);
     const [exists] = await file.exists();
@@ -137,7 +272,7 @@ app.get('/api/files/:filePath', async (req, res) => {
     console.log('File exists:', exists, 'for path:', filePath);
     
     if (!exists) {
-      return res.status(404).json({ error: 'File not found', filePath });
+      return res.status(404).json({ error: 'File not found in storage', filePath });
     }
     
     // Get file metadata

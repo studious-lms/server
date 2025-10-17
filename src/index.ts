@@ -187,6 +187,20 @@ app.get('/api/files/:filePath', async (req, res) => {
             }
           }
         },
+        annotations: {
+          include: {
+            student: true,
+            assignment: {
+              include: {
+                class: {
+                  include: {
+                    teachers: true
+                  }
+                }
+              }
+            }
+          }
+        },
         folder: {
           include: {
             class: {
@@ -226,6 +240,15 @@ app.get('/api/files/:filePath', async (req, res) => {
         const isStudent = classData.students.some(student => student.id === user.id);
         const isTeacher = classData.teachers.some(teacher => teacher.id === user.id);
         if (isStudent || isTeacher) {
+          hasPermission = true;
+        }
+      }
+
+      if (!hasPermission && fileRecord.annotations) {
+        const annotation = fileRecord.annotations;
+        if (annotation.studentId === user.id) {
+          hasPermission = true;
+        } else if (annotation.assignment?.class?.teachers.some(teacher => teacher.id === user.id)) {
           hasPermission = true;
         }
       }

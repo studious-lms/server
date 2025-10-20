@@ -2,15 +2,11 @@ import { z } from "zod";
 import { createTRPCRouter, protectedProcedure, protectedClassMemberProcedure, protectedTeacherProcedure } from "../trpc.js";
 import { TRPCError } from "@trpc/server";
 import { prisma } from "../lib/prisma.js";
-import { uploadFiles, type UploadedFile } from "../lib/fileUpload.js";
+import { createDirectUploadFiles, type DirectUploadFile, type UploadedFile } from "../lib/fileUpload.js";
 import { type Folder } from "@prisma/client";
 
-const fileSchema = z.object({
-  name: z.string(),
-  type: z.string(),
-  size: z.number(),
-  data: z.string(), // base64 encoded file data
-});
+// DEPRECATED: This schema is no longer used - files are uploaded directly to GCS
+// Use directFileSchema instead
 
 const createFolderSchema = z.object({
   name: z.string(),
@@ -18,9 +14,17 @@ const createFolderSchema = z.object({
   color: z.string().optional(),
 });
 
+// New schema for direct file uploads (no base64 data)
+const directFileSchema = z.object({
+  name: z.string(),
+  type: z.string(),
+  size: z.number(),
+  // No data field - for direct file uploads
+});
+
 const uploadFilesToFolderSchema = z.object({
   folderId: z.string(),
-  files: z.array(fileSchema),
+  files: z.array(directFileSchema), // Use direct file schema
 });
 
 const getRootFolderSchema = z.object({
@@ -469,7 +473,7 @@ export const folderRouter = createTRPCRouter({
       }
 
       // Upload files
-      const uploadedFiles = await uploadFiles(files, ctx.user.id, folder.id);
+      const uploadedFiles = await createDirectUploadFiles(files, ctx.user.id, folder.id);
       
       // Create file records in database
     //   const fileRecords = await prisma.file.createMany({

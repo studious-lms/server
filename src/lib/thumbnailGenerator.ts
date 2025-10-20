@@ -1,6 +1,6 @@
 import sharp from 'sharp';
 import { prisma } from './prisma.js';
-import { uploadFile, deleteFile, getSignedUrl } from './googleCloudStorage.js';
+import { deleteFile, getSignedUrl } from './googleCloudStorage.js';
 
 // Thumbnail size configuration
 const THUMBNAIL_WIDTH = 200;
@@ -166,20 +166,5 @@ export async function generateThumbnail(fileName: string, fileType: string): Pro
  * @param userId The user ID who owns the file
  * @returns The ID of the created thumbnail File
  */
-export async function storeThumbnail(thumbnailBuffer: Buffer, originalFileName: string, userId: string): Promise<string> {
-    // Convert buffer to base64 for uploadFile function
-    const base64Data = `data:image/jpeg;base64,${thumbnailBuffer.toString('base64')}`;
-    const thumbnailFileName = await uploadFile(base64Data, `thumbnails/${originalFileName}_thumb`, 'image/jpeg');
-    
-    // Create a new File entry for the thumbnail
-    const newThumbnail = await prisma.file.create({
-        data: {
-            name: `${originalFileName}_thumb.jpg`,
-            path: thumbnailFileName,
-            type: 'image/jpeg',
-            userId: userId,
-        },
-    });
-    
-    return newThumbnail.id;
-} 
+// DEPRECATED: This function is no longer used - thumbnails are generated during direct uploads
+// Thumbnail generation is now handled in the direct upload flow 

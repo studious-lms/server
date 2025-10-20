@@ -142,7 +142,7 @@ export const authRouter = createTRPCRouter({
       if (!user) {
         throw new TRPCError({
           code: "UNAUTHORIZED",
-          message: "Invalid username or password",
+          message: "user doesn't exists.",
         });
       }
 

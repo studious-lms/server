@@ -2,14 +2,18 @@ import { z } from "zod";
 import { createTRPCRouter, protectedProcedure, protectedClassMemberProcedure, protectedTeacherProcedure } from "../trpc.js";
 import { TRPCError } from "@trpc/server";
 import { prisma } from "../lib/prisma.js";
-import { uploadFiles, type UploadedFile } from "../lib/fileUpload.js";
+import { createDirectUploadFiles, type DirectUploadFile, confirmDirectUpload, updateUploadProgress, type UploadedFile } from "../lib/fileUpload.js";
 import { deleteFile } from "../lib/googleCloudStorage.js";
 
-const fileSchema = z.object({
+// DEPRECATED: This schema is no longer used - files are uploaded directly to GCS
+// Use directFileSchema instead
+
+// New schema for direct file uploads (no base64 data)
+const directFileSchema = z.object({
   name: z.string(),
   type: z.string(),
   size: z.number(),
-  data: z.string(), // base64 encoded file data
+  // No data field - for direct file uploads
 });
 
 const createAssignmentSchema = z.object({
@@ -17,7 +21,7 @@ const createAssignmentSchema = z.object({
   title: z.string(),
   instructions: z.string(),
   dueDate: z.string(),
-  files: z.array(fileSchema).optional(),
+  files: z.array(directFileSchema).optional(), // Use direct file schema
   existingFileIds: z.array(z.string()).optional(),
   maxGrade: z.number().optional(),
   graded: z.boolean().optional(),
@@ -35,7 +39,7 @@ const updateAssignmentSchema = z.object({
   title: z.string().optional(),
   instructions: z.string().optional(),
   dueDate: z.string().optional(),
-  files: z.array(fileSchema).optional(),
+  files: z.array(directFileSchema).optional(), // Use direct file schema
   existingFileIds: z.array(z.string()).optional(),
   removedAttachments: z.array(z.string()).optional(),
   maxGrade: z.number().optional(),
@@ -61,7 +65,7 @@ const submissionSchema = z.object({
   classId: z.string(),
   submissionId: z.string(),
   submit: z.boolean().optional(),
-  newAttachments: z.array(fileSchema).optional(),
+  newAttachments: z.array(directFileSchema).optional(), // Use direct file schema
   existingFileIds: z.array(z.string()).optional(),
   removedAttachments: z.array(z.string()).optional(),
 });
@@ -72,7 +76,7 @@ const updateSubmissionSchema = z.object({
   submissionId: z.string(),
   return: z.boolean().optional(),
   gradeReceived: z.number().nullable().optional(),
-  newAttachments: z.array(fileSchema).optional(),
+  newAttachments: z.array(directFileSchema).optional(), // Use direct file schema
   existingFileIds: z.array(z.string()).optional(),
   removedAttachments: z.array(z.string()).optional(),
   feedback: z.string().optional(),
@@ -82,6 +86,36 @@ const updateSubmissionSchema = z.object({
     points: z.number(),
     comments: z.string(),
   })).optional(),
+});
+
+// New schemas for direct upload functionality
+const getAssignmentUploadUrlsSchema = z.object({
+  assignmentId: z.string(),
+  classId: z.string(),
+  files: z.array(directFileSchema),
+});
+
+const getSubmissionUploadUrlsSchema = z.object({
+  submissionId: z.string(),
+  classId: z.string(),
+  files: z.array(directFileSchema),
+});
+
+const confirmAssignmentUploadSchema = z.object({
+  fileId: z.string(),
+  uploadSuccess: z.boolean(),
+  errorMessage: z.string().optional(),
+});
+
+const confirmSubmissionUploadSchema = z.object({
+  fileId: z.string(),
+  uploadSuccess: z.boolean(),
+  errorMessage: z.string().optional(),
+});
+
+const updateUploadProgressSchema = z.object({
+  fileId: z.string(),
+  progress: z.number().min(0).max(100),
 });
 
 export const assignmentRouter = createTRPCRouter({
@@ -109,7 +143,7 @@ export const assignmentRouter = createTRPCRouter({
       targetSectionId: z.string(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const { id, targetSectionId,  } = input;
+      const { id, targetSectionId } = input;
 
 
       const assignments = await prisma.assignment.findMany({
@@ -288,11 +322,13 @@ export const assignmentRouter = createTRPCRouter({
         )
       );
 
-      // Upload files if provided
+      // NOTE: Files are now handled via direct upload endpoints
+      // The files field in the schema is for metadata only
+      // Actual file uploads should use getAssignmentUploadUrls endpoint
       let uploadedFiles: UploadedFile[] = [];
       if (files && files.length > 0) {
-        // Store files in a class and assignment specific directory
-        uploadedFiles = await uploadFiles(files, ctx.user.id);
+        // Create direct upload files instead of processing base64
+        uploadedFiles = await createDirectUploadFiles(files, ctx.user.id, undefined, assignment.id);
       }
 
       // Update assignment with new file attachments
@@ -380,11 +416,11 @@ export const assignmentRouter = createTRPCRouter({
         });
       }
 
-      // Upload new files if provided
+      // NOTE: Files are now handled via direct upload endpoints
       let uploadedFiles: UploadedFile[] = [];
       if (files && files.length > 0) {
-        // Store files in a class and assignment specific directory
-        uploadedFiles = await uploadFiles(files, ctx.user.id);
+        // Create direct upload files instead of processing base64
+        uploadedFiles = await createDirectUploadFiles(files, ctx.user.id, undefined, input.id);
       }
 
       // Update assignment
@@ -953,7 +989,7 @@ export const assignmentRouter = createTRPCRouter({
       let uploadedFiles: UploadedFile[] = [];
       if (newAttachments && newAttachments.length > 0) {
         // Store files in a class and assignment specific directory
-        uploadedFiles = await uploadFiles(newAttachments, ctx.user.id);
+        uploadedFiles = await createDirectUploadFiles(newAttachments, ctx.user.id, undefined, undefined, submission.id);
       }
 
       // Update submission with new file attachments
@@ -1235,7 +1271,7 @@ export const assignmentRouter = createTRPCRouter({
       let uploadedFiles: UploadedFile[] = [];
       if (newAttachments && newAttachments.length > 0) {
         // Store files in a class and assignment specific directory
-        uploadedFiles = await uploadFiles(newAttachments, ctx.user.id);
+        uploadedFiles = await createDirectUploadFiles(newAttachments, ctx.user.id, undefined, undefined, submission.id);
       }
 
       // Update submission with new file attachments
@@ -1810,6 +1846,245 @@ export const assignmentRouter = createTRPCRouter({
       });
 
       return updatedAssignment;
+    }),
+
+  // New direct upload endpoints
+  getAssignmentUploadUrls: protectedTeacherProcedure
+    .input(getAssignmentUploadUrlsSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { assignmentId, classId, files } = input;
+
+      if (!ctx.user) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "You must be logged in to upload files",
+        });
+      }
+
+      // Verify user is a teacher of the class
+      const classData = await prisma.class.findFirst({
+        where: {
+          id: classId,
+          teachers: {
+            some: {
+              id: ctx.user.id,
+            },
+          },
+        },
+      });
+
+      if (!classData) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Class not found or you are not a teacher",
+        });
+      }
+
+      // Verify assignment exists and belongs to the class
+      const assignment = await prisma.assignment.findFirst({
+        where: {
+          id: assignmentId,
+          classId: classId,
+        },
+      });
+
+      if (!assignment) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Assignment not found",
+        });
+      }
+
+      // Create direct upload files
+      const directUploadFiles = await createDirectUploadFiles(
+        files,
+        ctx.user.id,
+        undefined, // No specific directory
+        assignmentId
+      );
+
+      return {
+        success: true,
+        uploadFiles: directUploadFiles,
+      };
+    }),
+
+  getSubmissionUploadUrls: protectedClassMemberProcedure
+    .input(getSubmissionUploadUrlsSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { submissionId, classId, files } = input;
+
+      if (!ctx.user) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "You must be logged in to upload files",
+        });
+      }
+
+      // Verify submission exists and user has access
+      const submission = await prisma.submission.findFirst({
+        where: {
+          id: submissionId,
+          assignment: {
+            classId: classId,
+          },
+        },
+        include: {
+          assignment: {
+            include: {
+              class: {
+                include: {
+                  students: true,
+                  teachers: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!submission) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Submission not found",
+        });
+      }
+
+      // Check if user is the student who owns the submission or a teacher of the class
+      const isStudent = submission.studentId === ctx.user.id;
+      const isTeacher = submission.assignment.class.teachers.some(teacher => teacher.id === ctx.user?.id);
+
+      if (!isStudent && !isTeacher) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You don't have permission to upload files to this submission",
+        });
+      }
+
+      // Create direct upload files
+      const directUploadFiles = await createDirectUploadFiles(
+        files,
+        ctx.user.id,
+        undefined, // No specific directory
+        undefined, // No assignment ID
+        submissionId
+      );
+
+      return {
+        success: true,
+        uploadFiles: directUploadFiles,
+      };
+    }),
+
+  confirmAssignmentUpload: protectedTeacherProcedure
+    .input(confirmAssignmentUploadSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { fileId, uploadSuccess, errorMessage } = input;
+
+      if (!ctx.user) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "You must be logged in",
+        });
+      }
+
+      // Verify file belongs to user and is an assignment file
+      const file = await prisma.file.findFirst({
+        where: {
+          id: fileId,
+          userId: ctx.user.id,
+          assignment: {
+            isNot: null,
+          },
+        },
+      });
+
+      if (!file) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "File not found or you don't have permission",
+        });
+      }
+
+      await confirmDirectUpload(fileId, uploadSuccess, errorMessage);
+
+      return {
+        success: true,
+        message: uploadSuccess ? "Upload confirmed successfully" : "Upload failed",
+      };
+    }),
+
+  confirmSubmissionUpload: protectedClassMemberProcedure
+    .input(confirmSubmissionUploadSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { fileId, uploadSuccess, errorMessage } = input;
+
+      if (!ctx.user) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "You must be logged in",
+        });
+      }
+
+      // Verify file belongs to user and is a submission file
+      const file = await prisma.file.findFirst({
+        where: {
+          id: fileId,
+          userId: ctx.user.id,
+          submission: {
+            isNot: null,
+          },
+        },
+      });
+
+      if (!file) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "File not found or you don't have permission",
+        });
+      }
+
+      await confirmDirectUpload(fileId, uploadSuccess, errorMessage);
+
+      return {
+        success: true,
+        message: uploadSuccess ? "Upload confirmed successfully" : "Upload failed",
+      };
+    }),
+
+  updateUploadProgress: protectedProcedure
+    .input(updateUploadProgressSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { fileId, progress } = input;
+
+      if (!ctx.user) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "You must be logged in",
+        });
+      }
+
+      // Verify file belongs to user
+      const file = await prisma.file.findFirst({
+        where: {
+          id: fileId,
+          userId: ctx.user.id,
+        },
+      });
+
+      if (!file) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "File not found or you don't have permission",
+        });
+      }
+
+      await updateUploadProgress(fileId, progress);
+
+      return {
+        success: true,
+        progress,
+      };
     }),
 });
 

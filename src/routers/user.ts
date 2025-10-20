@@ -2,7 +2,7 @@ import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "../trpc.js";
 import { TRPCError } from "@trpc/server";
 import { prisma } from "../lib/prisma.js";
-import { uploadFiles, type UploadedFile } from "../lib/fileUpload.js";
+import { createDirectUploadFiles, type DirectUploadFile } from "../lib/fileUpload.js";
 import { getSignedUrl } from "../lib/googleCloudStorage.js";
 import { logger } from "../utils/logger.js";
 import { bucket } from "../lib/googleCloudStorage.js";

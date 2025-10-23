@@ -741,6 +741,7 @@ export const assignmentRouter = createTRPCRouter({
             select: {
               id: true,
               username: true,
+              profile: true,
             },
           },
           assignment: {
@@ -847,6 +848,7 @@ export const assignmentRouter = createTRPCRouter({
             select: {
               id: true,
               username: true,
+              profile: true,
             },
           },
           assignment: {

@@ -5,6 +5,7 @@ import { logger } from "./utils/logger.js";
 export async function clearDatabase() {
     // Delete in order to respect foreign key constraints
     // Delete notifications first (they reference users)
+    logger.info('Clearing database');
     await prisma.notification.deleteMany();
     
     // Delete chat-related records
@@ -94,7 +95,7 @@ export const seedDatabase = async () => {
 
     // 3. Create Students (realistic names)
     const students = await Promise.all([
-        createUser('alex.martinez@student.riverside.edu', 'student123', 'alex.martinez'),
+        createUser('alex.martinez@student.rverside.eidu', 'student123', 'alex.martinez'),
         createUser('sophia.williams@student.riverside.edu', 'student123', 'sophia.williams'),
         createUser('james.brown@student.riverside.edu', 'student123', 'james.brown'),
         createUser('olivia.taylor@student.riverside.edu', 'student123', 'olivia.taylor'),

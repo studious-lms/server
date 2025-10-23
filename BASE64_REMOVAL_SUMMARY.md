@@ -118,6 +118,17 @@ for (const uploadFile of uploadResponse.uploadFiles) {
 4. **Update PDF generation** in lab chat to use direct upload
 5. **Add cleanup job** for orphaned files
 
+## 📝 Documentation Updates (October 23, 2025)
+
+- ✅ **API_SPECIFICATION.md** updated with direct upload flow
+  - Updated `user.updateProfile` endpoint documentation
+  - Updated File Object data models
+  - Added comprehensive direct upload flow documentation
+  - Added step-by-step examples for frontend developers
+  - Updated version to 1.2.0 with breaking changes documented
+- ✅ **All base64 references removed** from code (except comments explaining removal)
+- ✅ **Direct upload endpoints documented** with examples
+
 ## 📝 Files Modified
 
 - `prisma/schema.prisma` - Added upload tracking fields

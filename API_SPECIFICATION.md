@@ -144,15 +144,27 @@ Easy LMS is a comprehensive Learning Management System built with tRPC, Prisma, 
 **Input**:
 ```typescript
 {
-  profile: Record<string, any>;
+  profile?: {
+    displayName?: string;
+    bio?: string;
+    location?: string;
+    website?: string;
+  };
+  // For custom profile picture (already uploaded to GCS)
   profilePicture?: {
-    name: string;
-    type: string;
-    size: number;
-    data: string; // base64
+    filePath: string;
+    fileName: string;
+    fileType: string; // image/jpeg, image/png, etc.
+    fileSize: number;
+  };
+  // OR use DiceBear avatar URL
+  dicebearAvatar?: {
+    url: string; // DiceBear avatar URL
   };
 }
 ```
+
+**Note**: Profile pictures use direct upload to GCS. First get a signed upload URL using `user.getProfilePictureUploadUrl`, upload the file directly to GCS, then call this endpoint with the file path.
 
 ---
 
@@ -1291,14 +1303,28 @@ Array<{
 
 ## 📊 Data Models
 
-### File Object
+### File Object (Direct Upload)
+```typescript
+{
+  name: string;
+  type: string;
+  size: number;
+  // Note: No data field - files are uploaded directly to GCS
+}
+```
+
+### Uploaded File Object (Database)
 ```typescript
 {
   id: string;
   name: string;
+  url: string; // GCS file path
   type: string;
   size: number;
-  data: string; // base64 encoded
+  uploadStatus: 'PENDING' | 'UPLOADING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+  uploadProgress?: number;
+  createdAt: Date;
+  updatedAt: Date;
 }
 ```
 
@@ -1437,20 +1463,130 @@ const assignment = await trpc.assignment.create.mutate({
 
 ## 📝 Notes for Frontend Developers
 
-1. **File Uploads**: Files are sent as base64 encoded strings in the `data` field
+1. **File Uploads**: Files are uploaded directly to Google Cloud Storage (GCS) using signed URLs. See the "File Upload Flow" section below for details.
 2. **Date Handling**: All dates are ISO 8601 strings
 3. **Authentication**: Store JWT token and include in all requests
 4. **Real-time Updates**: Use Socket.IO for live updates
 5. **Error Handling**: Always handle tRPC errors appropriately
 6. **Type Safety**: Use the exported TypeScript types for full type safety
 
+### 📤 File Upload Flow (Direct Upload to GCS)
+
+**Important**: Files are NO LONGER sent as base64 encoded strings. Instead, they are uploaded directly to Google Cloud Storage for better performance and scalability.
+
+#### Step-by-Step Process:
+
+**1. Get Signed Upload URLs**
+```typescript
+// For assignment attachments
+const uploadResponse = await trpc.assignment.getAssignmentUploadUrls.mutate({
+  assignmentId: "assignment-id",
+  classId: "class-id",
+  files: [
+    { name: "homework.pdf", type: "application/pdf", size: 102400 },
+    { name: "notes.docx", type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", size: 51200 }
+  ]
+});
+
+// For submission attachments
+const uploadResponse = await trpc.assignment.getSubmissionUploadUrls.mutate({
+  assignmentId: "assignment-id",
+  classId: "class-id",
+  files: [
+    { name: "solution.pdf", type: "application/pdf", size: 204800 }
+  ]
+});
+
+// For folder files
+const uploadResponse = await trpc.folder.getUploadUrls.mutate({
+  folderId: "folder-id",
+  classId: "class-id",
+  files: [
+    { name: "lecture.pptx", type: "application/vnd.openxmlformats-officedocument.presentationml.presentation", size: 512000 }
+  ]
+});
+```
+
+**2. Upload Files Directly to GCS**
+```typescript
+for (const uploadFile of uploadResponse.uploadFiles) {
+  const file = files.find(f => f.name === uploadFile.name);
+  
+  // Optional: Track upload progress
+  const xhr = new XMLHttpRequest();
+  xhr.upload.addEventListener('progress', async (e) => {
+    if (e.lengthComputable) {
+      const progress = (e.loaded / e.total) * 100;
+      await trpc.assignment.updateUploadProgress.mutate({
+        fileId: uploadFile.id,
+        progress: Math.round(progress)
+      });
+    }
+  });
+  
+  // Upload to GCS using signed URL
+  await fetch(uploadFile.uploadUrl, {
+    method: 'PUT',
+    body: file,
+    headers: {
+      'Content-Type': file.type
+    }
+  });
+}
+```
+
+**3. Confirm Upload Success**
+```typescript
+// Confirm each file upload
+for (const uploadFile of uploadResponse.uploadFiles) {
+  await trpc.assignment.confirmAssignmentUpload.mutate({
+    fileId: uploadFile.id,
+    uploadSuccess: true // or false if upload failed
+  });
+}
+```
+
+#### Benefits of Direct Upload:
+- ✅ **33% smaller payload** (no base64 encoding overhead)
+- ✅ **Faster uploads** (direct to GCS, no server processing)
+- ✅ **Better scalability** (server doesn't handle file data)
+- ✅ **Upload progress tracking** (real-time progress updates)
+- ✅ **Better error handling** (retry failed uploads individually)
+
+#### Available Direct Upload Endpoints:
+
+**Assignment Attachments:**
+- `assignment.getAssignmentUploadUrls` - Get signed URLs for assignment files
+- `assignment.confirmAssignmentUpload` - Confirm file upload success
+
+**Submission Attachments:**
+- `assignment.getSubmissionUploadUrls` - Get signed URLs for submission files
+- `assignment.confirmSubmissionUpload` - Confirm file upload success
+
+**Folder Files:**
+- `folder.getUploadUrls` - Get signed URLs for folder files
+- `folder.confirmUpload` - Confirm file upload success
+
+**Progress Tracking:**
+- `assignment.updateUploadProgress` - Update upload progress for any file
+
 ---
 
 *Generated on: September 14, 2025*  
-*Version: 1.1.0*  
-*Last Updated: September 2025*
+*Version: 1.2.0*  
+*Last Updated: October 2025*
 
 ## 📋 Changelog
+
+### Version 1.2.0 (October 2025)
+- 🚀 **BREAKING CHANGE**: Migrated from base64 file uploads to direct GCS uploads
+- ✅ Added comprehensive direct upload documentation with step-by-step flow
+- ✅ Updated File Object data models to reflect new upload system
+- ✅ Added upload status tracking (`PENDING`, `UPLOADING`, `COMPLETED`, `FAILED`, `CANCELLED`)
+- ✅ Added new direct upload endpoints for assignments, submissions, and folders
+- ✅ Added upload progress tracking endpoint
+- ✅ Updated user profile picture upload to support both custom uploads and DiceBear avatars
+- 📝 Documented all benefits of direct upload approach (33% smaller payload, faster uploads, etc.)
 
 ### Version 1.1.0 (September 2025)
 - ✅ Added complete Folder Management endpoints (`folder.*`)

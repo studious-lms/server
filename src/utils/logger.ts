@@ -26,7 +26,24 @@ const colors = {
   magenta: '\x1b[35m',
   cyan: '\x1b[36m',
   white: '\x1b[37m',
-  gray: '\x1b[90m'
+  gray: '\x1b[90m',
+  // Background colors
+  bgRed: '\x1b[41m',
+  bgGreen: '\x1b[42m',
+  bgYellow: '\x1b[43m',
+  bgBlue: '\x1b[44m',
+  bgMagenta: '\x1b[45m',
+  bgCyan: '\x1b[46m',
+  bgWhite: '\x1b[47m',
+  bgGray: '\x1b[100m',
+  // Bright background colors
+  bgBrightRed: '\x1b[101m',
+  bgBrightGreen: '\x1b[102m',
+  bgBrightYellow: '\x1b[103m',
+  bgBrightBlue: '\x1b[104m',
+  bgBrightMagenta: '\x1b[105m',
+  bgBrightCyan: '\x1b[106m',
+  bgBrightWhite: '\x1b[107m'
 };
 
 class Logger {
@@ -34,6 +51,7 @@ class Logger {
   private isDevelopment: boolean;
   private mode: LogMode;
   private levelColors: Record<LogLevel, string>;
+  private levelBgColors: Record<LogLevel, string>;
   private levelEmojis: Record<LogLevel, string>;
 
   private constructor() {
@@ -49,6 +67,13 @@ class Logger {
       [LogLevel.WARN]: colors.yellow,
       [LogLevel.ERROR]: colors.red,
       [LogLevel.DEBUG]: colors.magenta
+    };
+
+    this.levelBgColors = {
+      [LogLevel.INFO]: colors.bgBlue,
+      [LogLevel.WARN]: colors.bgYellow,
+      [LogLevel.ERROR]: colors.bgRed,
+      [LogLevel.DEBUG]: colors.bgMagenta
     };
 
     this.levelEmojis = {
@@ -95,10 +120,12 @@ class Logger {
   private formatMessage(logMessage: LogMessage): string {
     const { level, message, timestamp, context } = logMessage;
     const color = this.levelColors[level];
+    const bgColor = this.levelBgColors[level];
     const emoji = this.levelEmojis[level];
     
     const timestampStr = colors.gray + `[${timestamp}]` + colors.reset;
-    const levelStr = color + `[${level.toUpperCase()}]` + colors.reset;
+    // Use background color for level badge like Vitest
+    const levelStr = colors.white + bgColor + ` ${level.toUpperCase()} ` + colors.reset;
     const emojiStr = emoji + ' ';
     const messageStr = colors.bright + message + colors.reset;
     

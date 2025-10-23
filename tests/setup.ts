@@ -5,6 +5,7 @@ import { logger } from '../src/utils/logger';
 import { appRouter } from '../src/routers/_app';
 import { createTRPCContext } from '../src/trpc';
 import { Session } from '@prisma/client';
+import { clearDatabase } from '../src/seedDatabase';
 
 const getCaller = async (token: string) => {
   const ctx = await createTRPCContext({
@@ -19,15 +20,8 @@ const getCaller = async (token: string) => {
 
   // Before the entire test suite runs
   beforeAll(async () => {
-  //   // Run migrations so the test DB has the latest schema
-  //   try {
-  //     logger.info('Setting up test database');
-  //     execSync('rm -f prisma/test.db');
-  //     execSync('npx prisma db push --force-reset --schema=prisma/schema.prisma');
-    
-  //   } catch (error) {
-  //     logger.error('Error initializing test database');
-  //   }
+
+    await clearDatabase();
 
     logger.info('Getting caller');
 

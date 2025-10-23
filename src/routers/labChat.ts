@@ -10,7 +10,8 @@ import {
 } from '../utils/inference.js';
 import { logger } from '../utils/logger.js';
 import { isAIUser } from '../utils/aiUser.js';
-import { uploadFile } from '../lib/googleCloudStorage.js';
+// DEPRECATED: uploadFile removed - use direct upload instead
+// import { uploadFile } from '../lib/googleCloudStorage.js';
 import { createPdf } from "../lib/jsonConversion.js"
 import OpenAI from 'openai';
 import { v4 as uuidv4 } from "uuid";
@@ -924,7 +925,8 @@ WHEN CREATING COURSE MATERIALS (docs field):
               
 
               logger.info(`PDF ${i + 1} generated successfully`, { labChatId, title: doc.title });
-              const gcpResult = await uploadFile(Buffer.from(pdfBytes).toString('base64'), `class/generated/${fullLabChat.classId}/${filename}`, 'application/pdf');
+              // DEPRECATED: Base64 upload removed - use direct upload instead
+              // const gcpResult = await uploadFile(Buffer.from(pdfBytes).toString('base64'), `class/generated/${fullLabChat.classId}/${filename}`, 'application/pdf');
               logger.info(`PDF ${i + 1} uploaded successfully`, { labChatId, filename });
 
               const file = await prisma.file.create({

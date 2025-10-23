@@ -16,46 +16,8 @@ export const bucket = storage.bucket(process.env.GOOGLE_CLOUD_BUCKET_NAME!);
 // Short expiration time for signed URLs (5 minutes)
 const SIGNED_URL_EXPIRATION = 5 * 60 * 1000;
 
-/**
- * Uploads a file to Google Cloud Storage
- * @param base64Data Base64 encoded file data
- * @param filePath The path where the file should be stored
- * @param contentType The MIME type of the file
- * @returns The path of the uploaded file
- */
-export async function uploadFile(
-  base64Data: string,
-  filePath: string,
-  contentType: string
-): Promise<string> {
-  try {
-    // Remove the data URL prefix if present
-    const base64Content = base64Data.includes('base64,')
-      ? base64Data.split('base64,')[1]
-      : base64Data;
-
-    // Convert base64 to buffer
-    const fileBuffer = Buffer.from(base64Content, 'base64');
-
-    // Create a new file in the bucket
-    const file = bucket.file(filePath);
-
-    // Upload the file
-    await file.save(fileBuffer, {
-      metadata: {
-        contentType,
-      },
-    });
-
-    return filePath;
-  } catch (error) {
-    console.error('Error uploading to Google Cloud Storage:', error);
-    throw new TRPCError({
-      code: 'INTERNAL_SERVER_ERROR',
-      message: 'Failed to upload file to storage',
-    });
-  }
-}
+// DEPRECATED: This function is no longer used - files are uploaded directly to GCS
+// The backend proxy upload endpoint in index.ts handles direct uploads
 
 /**
  * Gets a signed URL for a file
@@ -98,6 +60,25 @@ export async function deleteFile(filePath: string): Promise<void> {
     throw new TRPCError({
       code: 'INTERNAL_SERVER_ERROR',
       message: 'Failed to delete file from storage',
+    });
+  }
+}
+
+/**
+ * Checks if an object exists in Google Cloud Storage
+ * @param bucketName The name of the bucket (unused, uses default bucket)
+ * @param objectPath The path of the object to check
+ * @returns Promise<boolean> True if the object exists, false otherwise
+ */
+export async function objectExists(bucketName: string, objectPath: string): Promise<boolean> {
+  try {
+    const [exists] = await bucket.file(objectPath).exists();
+    return exists;
+  } catch (error) {
+    console.error('Error checking if object exists in Google Cloud Storage:', error);
+    throw new TRPCError({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: 'Failed to check object existence',
     });
   }
 } 

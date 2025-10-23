@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from "uuid";
 import { getSignedUrl, objectExists } from "./googleCloudStorage.js";
 import { generateMediaThumbnail } from "./thumbnailGenerator.js";
 import { prisma } from "./prisma.js";
-import { logger } from "src/utils/logger.js";
+import { logger } from "../utils/logger.js";
 
 export interface FileData {
   name: string;

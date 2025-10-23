@@ -1,8 +1,9 @@
 import { TRPCError } from "@trpc/server";
 import { v4 as uuidv4 } from "uuid";
-import { getSignedUrl } from "./googleCloudStorage.js";
+import { getSignedUrl, objectExists } from "./googleCloudStorage.js";
 import { generateMediaThumbnail } from "./thumbnailGenerator.js";
 import { prisma } from "./prisma.js";
+import { logger } from "src/utils/logger.js";
 
 export interface FileData {
   name: string;
@@ -181,7 +182,11 @@ export async function createDirectUploadFile(
       uploadSessionId
     };
   } catch (error) {
-    console.error('Error creating direct upload file:', error);
+    logger.error('Error creating direct upload file:', {error: error instanceof Error ? {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    } : error});
     throw new TRPCError({
       code: 'INTERNAL_SERVER_ERROR',
       message: 'Failed to create direct upload file',
@@ -201,17 +206,53 @@ export async function confirmDirectUpload(
   errorMessage?: string
 ): Promise<void> {
   try {
+    // First fetch the file record to get the object path
+    const fileRecord = await prisma.file.findUnique({
+      where: { id: fileId },
+      select: { path: true }
+    });
+
+    if (!fileRecord) {
+      throw new TRPCError({
+        code: 'NOT_FOUND',
+        message: 'File record not found',
+      });
+    }
+
+    let actualUploadSuccess = uploadSuccess;
+    let actualErrorMessage = errorMessage;
+
+    // If uploadSuccess is true, verify the object actually exists in GCS
+    if (uploadSuccess) {
+      try {
+        const exists = await objectExists(process.env.GOOGLE_CLOUD_BUCKET_NAME!, fileRecord.path);
+        if (!exists) {
+          actualUploadSuccess = false;
+          actualErrorMessage = 'File upload reported as successful but object not found in Google Cloud Storage';
+          logger.error(`File upload verification failed for ${fileId}: object ${fileRecord.path} not found in GCS`);
+        }
+      } catch (error) {
+        logger.error(`Error verifying file existence in GCS for ${fileId}:`, {error: error instanceof Error ? {
+          name: error.name,
+          message: error.message,
+          stack: error.stack,
+        } : error});
+        actualUploadSuccess = false;
+        actualErrorMessage = 'Failed to verify file existence in Google Cloud Storage';
+      }
+    }
+
     const updateData: any = {
-      uploadStatus: uploadSuccess ? 'COMPLETED' : 'FAILED',
-      uploadProgress: uploadSuccess ? 100 : 0,
+      uploadStatus: actualUploadSuccess ? 'COMPLETED' : 'FAILED',
+      uploadProgress: actualUploadSuccess ? 100 : 0,
     };
     
-    if (!uploadSuccess && errorMessage) {
-      updateData.uploadError = errorMessage;
+    if (!actualUploadSuccess && actualErrorMessage) {
+      updateData.uploadError = actualErrorMessage;
       updateData.uploadRetryCount = { increment: 1 };
     }
     
-    if (uploadSuccess) {
+    if (actualUploadSuccess) {
       updateData.uploadedAt = new Date();
     }
     
@@ -220,7 +261,7 @@ export async function confirmDirectUpload(
       data: updateData
     });
   } catch (error) {
-    console.error('Error confirming direct upload:', error);
+    logger.error('Error confirming direct upload:', {error});
     throw new TRPCError({
       code: 'INTERNAL_SERVER_ERROR',
       message: 'Failed to confirm upload',
@@ -238,15 +279,29 @@ export async function updateUploadProgress(
   progress: number
 ): Promise<void> {
   try {
+    // await prisma.file.update({
+    //   where: { id: fileId },
+    //   data: {
+    //     uploadStatus: 'UPLOADING',
+    //     uploadProgress: Math.min(100, Math.max(0, progress))
+    //   }
+    // });
+    const current = await prisma.file.findUnique({ where: { id: fileId }, select: { uploadStatus: true } });
+    if (!current || ['COMPLETED','FAILED','CANCELLED'].includes(current.uploadStatus as string)) return;
+    const clamped = Math.min(100, Math.max(0, progress));
     await prisma.file.update({
       where: { id: fileId },
       data: {
         uploadStatus: 'UPLOADING',
-        uploadProgress: Math.min(100, Math.max(0, progress))
+        uploadProgress: clamped
       }
     });
   } catch (error) {
-    console.error('Error updating upload progress:', error);
+    logger.error('Error updating upload progress:', {error: error instanceof Error ? {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    } : error});  
     throw new TRPCError({
       code: 'INTERNAL_SERVER_ERROR',
       message: 'Failed to update upload progress',
@@ -276,7 +331,11 @@ export async function createDirectUploadFiles(
     );
     return await Promise.all(uploadPromises);
   } catch (error) {
-    console.error('Error creating direct upload files:', error);
+    logger.error('Error creating direct upload files:', {error: error instanceof Error ? {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    } : error});
     throw new TRPCError({
       code: 'INTERNAL_SERVER_ERROR',
       message: 'Failed to create direct upload files',

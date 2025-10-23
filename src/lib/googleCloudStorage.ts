@@ -62,4 +62,23 @@ export async function deleteFile(filePath: string): Promise<void> {
       message: 'Failed to delete file from storage',
     });
   }
+}
+
+/**
+ * Checks if an object exists in Google Cloud Storage
+ * @param bucketName The name of the bucket (unused, uses default bucket)
+ * @param objectPath The path of the object to check
+ * @returns Promise<boolean> True if the object exists, false otherwise
+ */
+export async function objectExists(bucketName: string, objectPath: string): Promise<boolean> {
+  try {
+    const [exists] = await bucket.file(objectPath).exists();
+    return exists;
+  } catch (error) {
+    console.error('Error checking if object exists in Google Cloud Storage:', error);
+    throw new TRPCError({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: 'Failed to check object existence',
+    });
+  }
 } 

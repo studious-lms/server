@@ -405,6 +405,7 @@ export const assignmentRouter = createTRPCRouter({
               type: true,
               path: true,
               size: true,
+              uploadStatus: true,
               thumbnail: {
                 select: {
                   path: true
@@ -433,6 +434,31 @@ export const assignmentRouter = createTRPCRouter({
       if (files && files.length > 0) {
         // Create direct upload files instead of processing base64
         uploadedFiles = await createDirectUploadFiles(files, ctx.user.id, undefined, input.id);
+      }
+
+      // Delete removed attachments from storage before updating database
+      if (input.removedAttachments && input.removedAttachments.length > 0) {
+        const filesToDelete = assignment.attachments.filter((file) =>
+          input.removedAttachments!.includes(file.id)
+        );
+
+        // Delete files from storage (only if they were actually uploaded)
+        await Promise.all(filesToDelete.map(async (file) => {
+          try {
+            // Only delete from GCS if the file was successfully uploaded
+            if (file.uploadStatus === 'COMPLETED') {
+              // Delete the main file
+              await deleteFile(file.path);
+
+              // Delete thumbnail if it exists
+              if (file.thumbnail?.path) {
+                await deleteFile(file.thumbnail.path);
+              }
+            }
+          } catch (error) {
+            console.warn(`Failed to delete file ${file.path}:`, error);
+          }
+        }));
       }
 
       // Update assignment
@@ -600,15 +626,18 @@ export const assignmentRouter = createTRPCRouter({
         ...assignment.submissions.flatMap(sub => [...sub.attachments, ...sub.annotations])
       ];
 
-      // Delete files from storage
+      // Delete files from storage (only if they were actually uploaded)
       await Promise.all(filesToDelete.map(async (file) => {
         try {
-          // Delete the main file
-          await deleteFile(file.path);
+          // Only delete from GCS if the file was successfully uploaded
+          if (file.uploadStatus === 'COMPLETED') {
+            // Delete the main file
+            await deleteFile(file.path);
 
-          // Delete thumbnail if it exists
-          if (file.thumbnail) {
-            await deleteFile(file.thumbnail.path);
+            // Delete thumbnail if it exists
+            if (file.thumbnail) {
+              await deleteFile(file.thumbnail.path);
+            }
           }
         } catch (error) {
           console.warn(`Failed to delete file ${file.path}:`, error);
@@ -1044,15 +1073,18 @@ export const assignmentRouter = createTRPCRouter({
           removedAttachments.includes(file.id)
         );
 
-        // Delete files from storage
+        // Delete files from storage (only if they were actually uploaded)
         await Promise.all(filesToDelete.map(async (file) => {
           try {
-            // Delete the main file
-            await deleteFile(file.path);
+            // Only delete from GCS if the file was successfully uploaded
+            if (file.uploadStatus === 'COMPLETED') {
+              // Delete the main file
+              await deleteFile(file.path);
 
-            // Delete thumbnail if it exists
-            if (file.thumbnail?.path) {
-              await deleteFile(file.thumbnail.path);
+              // Delete thumbnail if it exists
+              if (file.thumbnail?.path) {
+                await deleteFile(file.thumbnail.path);
+              }
             }
           } catch (error) {
             console.warn(`Failed to delete file ${file.path}:`, error);
@@ -1308,15 +1340,18 @@ export const assignmentRouter = createTRPCRouter({
           removedAttachments.includes(file.id)
         );
 
-        // Delete files from storage
+        // Delete files from storage (only if they were actually uploaded)
         await Promise.all(filesToDelete.map(async (file) => {
           try {
-            // Delete the main file
-            await deleteFile(file.path);
+            // Only delete from GCS if the file was successfully uploaded
+            if (file.uploadStatus === 'COMPLETED') {
+              // Delete the main file
+              await deleteFile(file.path);
 
-            // Delete thumbnail if it exists
-            if (file.thumbnail?.path) {
-              await deleteFile(file.thumbnail.path);
+              // Delete thumbnail if it exists
+              if (file.thumbnail?.path) {
+                await deleteFile(file.thumbnail.path);
+              }
             }
           } catch (error) {
             console.warn(`Failed to delete file ${file.path}:`, error);

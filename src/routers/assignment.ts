@@ -113,6 +113,18 @@ const confirmSubmissionUploadSchema = z.object({
   errorMessage: z.string().optional(),
 });
 
+const getAnnotationUploadUrlsSchema = z.object({
+  submissionId: z.string(),
+  classId: z.string(),
+  files: z.array(directFileSchema),
+});
+
+const confirmAnnotationUploadSchema = z.object({
+  fileId: z.string(),
+  uploadSuccess: z.boolean(),
+  errorMessage: z.string().optional(),
+});
+
 const updateUploadProgressSchema = z.object({
   fileId: z.string(),
   progress: z.number().min(0).max(100),
@@ -393,6 +405,7 @@ export const assignmentRouter = createTRPCRouter({
               type: true,
               path: true,
               size: true,
+              uploadStatus: true,
               thumbnail: {
                 select: {
                   path: true
@@ -421,6 +434,31 @@ export const assignmentRouter = createTRPCRouter({
       if (files && files.length > 0) {
         // Create direct upload files instead of processing base64
         uploadedFiles = await createDirectUploadFiles(files, ctx.user.id, undefined, input.id);
+      }
+
+      // Delete removed attachments from storage before updating database
+      if (input.removedAttachments && input.removedAttachments.length > 0) {
+        const filesToDelete = assignment.attachments.filter((file) =>
+          input.removedAttachments!.includes(file.id)
+        );
+
+        // Delete files from storage (only if they were actually uploaded)
+        await Promise.all(filesToDelete.map(async (file) => {
+          try {
+            // Only delete from GCS if the file was successfully uploaded
+            if (file.uploadStatus === 'COMPLETED') {
+              // Delete the main file
+              await deleteFile(file.path);
+
+              // Delete thumbnail if it exists
+              if (file.thumbnail?.path) {
+                await deleteFile(file.thumbnail.path);
+              }
+            }
+          } catch (error) {
+            console.warn(`Failed to delete file ${file.path}:`, error);
+          }
+        }));
       }
 
       // Update assignment
@@ -588,15 +626,18 @@ export const assignmentRouter = createTRPCRouter({
         ...assignment.submissions.flatMap(sub => [...sub.attachments, ...sub.annotations])
       ];
 
-      // Delete files from storage
+      // Delete files from storage (only if they were actually uploaded)
       await Promise.all(filesToDelete.map(async (file) => {
         try {
-          // Delete the main file
-          await deleteFile(file.path);
+          // Only delete from GCS if the file was successfully uploaded
+          if (file.uploadStatus === 'COMPLETED') {
+            // Delete the main file
+            await deleteFile(file.path);
 
-          // Delete thumbnail if it exists
-          if (file.thumbnail) {
-            await deleteFile(file.thumbnail.path);
+            // Delete thumbnail if it exists
+            if (file.thumbnail) {
+              await deleteFile(file.thumbnail.path);
+            }
           }
         } catch (error) {
           console.warn(`Failed to delete file ${file.path}:`, error);
@@ -1034,15 +1075,18 @@ export const assignmentRouter = createTRPCRouter({
           removedAttachments.includes(file.id)
         );
 
-        // Delete files from storage
+        // Delete files from storage (only if they were actually uploaded)
         await Promise.all(filesToDelete.map(async (file) => {
           try {
-            // Delete the main file
-            await deleteFile(file.path);
+            // Only delete from GCS if the file was successfully uploaded
+            if (file.uploadStatus === 'COMPLETED') {
+              // Delete the main file
+              await deleteFile(file.path);
 
-            // Delete thumbnail if it exists
-            if (file.thumbnail?.path) {
-              await deleteFile(file.thumbnail.path);
+              // Delete thumbnail if it exists
+              if (file.thumbnail?.path) {
+                await deleteFile(file.thumbnail.path);
+              }
             }
           } catch (error) {
             console.warn(`Failed to delete file ${file.path}:`, error);
@@ -1270,31 +1314,13 @@ export const assignmentRouter = createTRPCRouter({
         });
       }
 
-      let uploadedFiles: UploadedFile[] = [];
+      // NOTE: Teacher annotation files are now handled via direct upload endpoints
+      // Use getAnnotationUploadUrls and confirmAnnotationUpload endpoints instead
+      // The newAttachments field is deprecated for annotations
       if (newAttachments && newAttachments.length > 0) {
-        // Store files in a class and assignment specific directory
-        uploadedFiles = await createDirectUploadFiles(newAttachments, ctx.user.id, undefined, undefined, submission.id);
-      }
-
-      // Update submission with new file attachments
-      if (uploadedFiles.length > 0) {
-        await prisma.submission.update({
-          where: { id: submission.id },
-          data: {
-            annotations: {
-              create: uploadedFiles.map(file => ({
-                name: file.name,
-                type: file.type,
-                size: file.size,
-                path: file.path,
-                ...(file.thumbnailId && {
-                  thumbnail: {
-                    connect: { id: file.thumbnailId }
-                  }
-                })
-              }))
-            }
-          }
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Direct file upload is deprecated. Use getAnnotationUploadUrls endpoint instead.",
         });
       }
 
@@ -1316,15 +1342,18 @@ export const assignmentRouter = createTRPCRouter({
           removedAttachments.includes(file.id)
         );
 
-        // Delete files from storage
+        // Delete files from storage (only if they were actually uploaded)
         await Promise.all(filesToDelete.map(async (file) => {
           try {
-            // Delete the main file
-            await deleteFile(file.path);
+            // Only delete from GCS if the file was successfully uploaded
+            if (file.uploadStatus === 'COMPLETED') {
+              // Delete the main file
+              await deleteFile(file.path);
 
-            // Delete thumbnail if it exists
-            if (file.thumbnail?.path) {
-              await deleteFile(file.thumbnail.path);
+              // Delete thumbnail if it exists
+              if (file.thumbnail?.path) {
+                await deleteFile(file.thumbnail.path);
+              }
             }
           } catch (error) {
             console.warn(`Failed to delete file ${file.path}:`, error);
@@ -2051,6 +2080,109 @@ export const assignmentRouter = createTRPCRouter({
       return {
         success: true,
         message: uploadSuccess ? "Upload confirmed successfully" : "Upload failed",
+      };
+    }),
+
+  getAnnotationUploadUrls: protectedTeacherProcedure
+    .input(getAnnotationUploadUrlsSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { submissionId, classId, files } = input;
+
+      if (!ctx.user) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "You must be logged in to upload files",
+        });
+      }
+
+      // Verify submission exists and user is a teacher of the class
+      const submission = await prisma.submission.findFirst({
+        where: {
+          id: submissionId,
+          assignment: {
+            classId: classId,
+            class: {
+              teachers: {
+                some: {
+                  id: ctx.user.id,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!submission) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Submission not found or you are not a teacher of this class",
+        });
+      }
+
+      // Create direct upload files for annotations
+      // Note: We pass submissionId as the 5th parameter, but these are annotations not submission files
+      // We need to store them separately, so we'll use a different approach
+      const directUploadFiles = await createDirectUploadFiles(
+        files,
+        ctx.user.id,
+        undefined, // No specific directory
+        undefined, // No assignment ID
+        undefined  // Don't link to submission yet (will be linked in confirmAnnotationUpload)
+      );
+
+      // Store the submissionId in the file record so we can link it to annotations later
+      await Promise.all(
+        directUploadFiles.map(file =>
+          prisma.file.update({
+            where: { id: file.id },
+            data: {
+              annotationId: submissionId, // Store as annotation
+            }
+          })
+        )
+      );
+
+      return {
+        success: true,
+        uploadFiles: directUploadFiles,
+      };
+    }),
+
+  confirmAnnotationUpload: protectedTeacherProcedure
+    .input(confirmAnnotationUploadSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { fileId, uploadSuccess, errorMessage } = input;
+
+      if (!ctx.user) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "You must be logged in",
+        });
+      }
+
+      // Verify file belongs to user and is an annotation file
+      const file = await prisma.file.findFirst({
+        where: {
+          id: fileId,
+          userId: ctx.user.id,
+          annotationId: {
+            not: null,
+          },
+        },
+      });
+
+      if (!file) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "File not found or you don't have permission",
+        });
+      }
+
+      await confirmDirectUpload(fileId, uploadSuccess, errorMessage);
+
+      return {
+        success: true,
+        message: uploadSuccess ? "Annotation upload confirmed successfully" : "Annotation upload failed",
       };
     }),
 

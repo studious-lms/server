@@ -328,14 +328,17 @@ export const fileRouter = createTRPCRouter({
         });
       }
 
-      // Delete files from storage
+      // Delete files from storage (only if they were actually uploaded)
       try {
-        // Delete the main file
-        await deleteFile(file.path);
-        
-        // Delete thumbnail if it exists
-        if (file.thumbnail) {
-          await deleteFile(file.thumbnail.path);
+        // Only delete from GCS if the file was successfully uploaded
+        if (file.uploadStatus === 'COMPLETED') {
+          // Delete the main file
+          await deleteFile(file.path);
+          
+          // Delete thumbnail if it exists
+          if (file.thumbnail) {
+            await deleteFile(file.thumbnail.path);
+          }
         }
       } catch (error) {
         logger.warn(`Failed to delete file ${file.path}:`, error as Record<string, any>);

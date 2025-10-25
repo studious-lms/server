@@ -793,4 +793,113 @@ export const folderRouter = createTRPCRouter({
 
       return parents;
     }),
+
+  getFolderUploadUrls: protectedTeacherProcedure
+    .input(z.object({
+      classId: z.string(),
+      folderId: z.string(),
+      files: z.array(directFileSchema),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { classId, folderId, files } = input;
+
+      if (!ctx.user) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "You must be logged in to upload files",
+        });
+      }
+
+      // Verify user is a teacher of the class
+      const classData = await prisma.class.findFirst({
+        where: {
+          id: classId,
+          teachers: {
+            some: {
+              id: ctx.user.id,
+            },
+          },
+        },
+      });
+
+      if (!classData) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Class not found or you are not a teacher",
+        });
+      }
+
+      // Verify folder exists
+      const folder = await prisma.folder.findUnique({
+        where: {
+          id: folderId,
+        },
+      });
+
+      if (!folder) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Folder not found",
+        });
+      }
+
+      // Verify folder belongs to the class by traversing parent hierarchy
+      // Only root folders have classId, child folders use parentFolderId
+      let currentFolder: typeof folder | null = folder;
+      let belongsToClass = false;
+
+      while (currentFolder) {
+        // Check if we've reached a root folder with the matching classId
+        if (currentFolder.classId === classId) {
+          belongsToClass = true;
+          break;
+        }
+        
+        // If this folder has a parent, traverse up
+        if (currentFolder.parentFolderId) {
+          currentFolder = await prisma.folder.findUnique({
+            where: { id: currentFolder.parentFolderId },
+          });
+        } else {
+          // Reached a root folder without matching classId
+          break;
+        }
+      }
+
+      if (!belongsToClass) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Folder does not belong to this class",
+        });
+      }
+
+      // Create direct upload files
+      const uploadFiles = await createDirectUploadFiles(files, ctx.user.id, folder.id);
+      
+      return uploadFiles;
+    }),
+
+  confirmFolderUpload: protectedTeacherProcedure
+    .input(z.object({
+      fileId: z.string(),
+      uploadSuccess: z.boolean(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { fileId, uploadSuccess } = input;
+
+      if (!ctx.user) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "You must be logged in to confirm uploads",
+        });
+      }
+
+      // Import the confirmDirectUpload function
+      const { confirmDirectUpload } = await import("../lib/fileUpload.js");
+      
+      // Confirm the upload
+      await confirmDirectUpload(fileId, uploadSuccess);
+      
+      return { success: true };
+    }),
 }); 

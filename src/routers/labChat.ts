@@ -10,8 +10,7 @@ import {
 } from '../utils/inference.js';
 import { logger } from '../utils/logger.js';
 import { isAIUser } from '../utils/aiUser.js';
-// DEPRECATED: uploadFile removed - use direct upload instead
-// import { uploadFile } from '../lib/googleCloudStorage.js';
+import { bucket } from '../lib/googleCloudStorage.js';
 import { createPdf } from "../lib/jsonConversion.js"
 import OpenAI from 'openai';
 import { v4 as uuidv4 } from "uuid";
@@ -922,19 +921,29 @@ WHEN CREATING COURSE MATERIALS (docs field):
                 .substring(0, 50);
               
               const filename = `${sanitizedTitle}_${uuidv4().substring(0, 8)}.pdf`;
-              
+              const filePath = `class/generated/${fullLabChat.classId}/${filename}`;
 
               logger.info(`PDF ${i + 1} generated successfully`, { labChatId, title: doc.title });
-              // DEPRECATED: Base64 upload removed - use direct upload instead
-              // const gcpResult = await uploadFile(Buffer.from(pdfBytes).toString('base64'), `class/generated/${fullLabChat.classId}/${filename}`, 'application/pdf');
+              
+              // Upload directly to Google Cloud Storage
+              const gcsFile = bucket.file(filePath);
+              await gcsFile.save(Buffer.from(pdfBytes), {
+                metadata: {
+                  contentType: 'application/pdf',
+                }
+              });
+    
               logger.info(`PDF ${i + 1} uploaded successfully`, { labChatId, filename });
 
               const file = await prisma.file.create({
                 data: {
                   name: filename,
-                  path: `class/generated/${fullLabChat.classId}/${filename}`,
+                  path: filePath,
                   type: 'application/pdf',
+                  size: pdfBytes.length,
                   userId: fullLabChat.createdById,
+                  uploadStatus: 'COMPLETED',
+                  uploadedAt: new Date(),
                 },
               });
               attachmentIds.push(file.id);

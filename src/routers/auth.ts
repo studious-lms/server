@@ -180,7 +180,7 @@ export const authRouter = createTRPCRouter({
       };
     }),
 
-  logout: publicProcedure
+  logout: protectedProcedure
     .mutation(async ({ ctx }) => {
       if (!ctx.user) {
         throw new TRPCError({

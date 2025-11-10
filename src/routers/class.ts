@@ -137,6 +137,7 @@ export const classRouter = createTRPCRouter({
               id: true,
               remarks: true,
               createdAt: true,
+              modifiedAt: true,
               teacher: {
                 select: {
                   id: true,

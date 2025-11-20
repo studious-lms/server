@@ -25,6 +25,13 @@ const createAssignmentSchema = z.object({
   dueDate: z.string(),
   files: z.array(directFileSchema).optional(), // Use direct file schema
   existingFileIds: z.array(z.string()).optional(),
+  aiPolicyLevel: z.number().default(0),
+  acceptFiles: z.boolean().optional(),
+  acceptExtendedResponse: z.boolean().optional(),
+  acceptWorksheet: z.boolean().optional(),
+  worksheetIds: z.array(z.string()).optional(),
+  gradeWithAI: z.boolean().optional(),
+  studentIds: z.array(z.string()).optional(),
   maxGrade: z.number().optional(),
   graded: z.boolean().optional(),
   weight: z.number().optional(),
@@ -42,6 +49,13 @@ const updateAssignmentSchema = z.object({
   instructions: z.string().optional(),
   dueDate: z.string().optional(),
   files: z.array(directFileSchema).optional(), // Use direct file schema
+  aiPolicyLevel: z.number().default(0),
+  acceptFiles: z.boolean().optional(),
+  acceptExtendedResponse: z.boolean().optional(),
+  acceptWorksheet: z.boolean().optional(),
+  worksheetIds: z.array(z.string()).optional(),
+  gradeWithAI: z.boolean().optional(),
+  studentIds: z.array(z.string()).optional(),
   existingFileIds: z.array(z.string()).optional(),
   removedAttachments: z.array(z.string()).optional(),
   maxGrade: z.number().optional(),
@@ -68,6 +82,7 @@ const submissionSchema = z.object({
   submissionId: z.string(),
   submit: z.boolean().optional(),
   newAttachments: z.array(directFileSchema).optional(), // Use direct file schema
+  extendedResponse: z.string().optional(),
   existingFileIds: z.array(z.string()).optional(),
   removedAttachments: z.array(z.string()).optional(),
 });
@@ -155,16 +170,42 @@ async function getUnifiedList(tx: any, classId: string) {
 }
 
 // Helper function to normalize unified list to 1..n
+// Updated to batch updates to prevent timeouts with large lists
 async function normalizeUnifiedList(tx: any, classId: string, orderedItems: Array<{ id: string; type: 'section' | 'assignment' }>) {
-  await Promise.all(
-    orderedItems.map((item, index) => {
-      if (item.type === 'section') {
-        return tx.section.update({ where: { id: item.id }, data: { order: index + 1 } });
-      } else {
-        return tx.assignment.update({ where: { id: item.id }, data: { order: index + 1 } });
-      }
-    })
-  );
+  const BATCH_SIZE = 10; // Process 10 items at a time to avoid overwhelming the transaction
+  
+  // Group items by type for more efficient updates
+  const sections: Array<{ id: string; order: number }> = [];
+  const assignments: Array<{ id: string; order: number }> = [];
+  
+  orderedItems.forEach((item, index) => {
+    const orderData = { id: item.id, order: index + 1 };
+    if (item.type === 'section') {
+      sections.push(orderData);
+    } else {
+      assignments.push(orderData);
+    }
+  });
+  
+  // Process updates in batches
+  const processBatch = async (items: Array<{ id: string; order: number }>, type: 'section' | 'assignment') => {
+    for (let i = 0; i < items.length; i += BATCH_SIZE) {
+      const batch = items.slice(i, i + BATCH_SIZE);
+      await Promise.all(
+        batch.map(item => {
+          if (type === 'section') {
+            return tx.section.update({ where: { id: item.id }, data: { order: item.order } });
+          } else {
+            return tx.assignment.update({ where: { id: item.id }, data: { order: item.order } });
+          }
+        })
+      );
+    }
+  };
+  
+  // Process sections and assignments sequentially to avoid transaction overload
+  await processBatch(sections, 'section');
+  await processBatch(assignments, 'assignment');
 }
 
 export const assignmentRouter = createTRPCRouter({
@@ -235,6 +276,9 @@ export const assignmentRouter = createTRPCRouter({
         await normalizeUnifiedList(tx, classId, next);
 
         return tx.assignment.findUnique({ where: { id: movedId } });
+      }, {
+        maxWait: 10000, // 10 seconds max wait time
+        timeout: 30000, // 30 seconds timeout for reordering operations
       });
 
       return result;
@@ -266,6 +310,9 @@ export const assignmentRouter = createTRPCRouter({
         await normalizeUnifiedList(tx, current.classId, unified.map(item => ({ id: item.id, type: item.type })));
 
         return tx.assignment.findUnique({ where: { id } });
+      }, {
+        maxWait: 10000, // 10 seconds max wait time
+        timeout: 30000, // 30 seconds timeout for reordering operations
       });
 
       return updated;
@@ -299,6 +346,9 @@ export const assignmentRouter = createTRPCRouter({
         // If frontend wants to change position, they should call reorder after move
 
         return tx.assignment.findUnique({ where: { id } });
+      }, {
+        maxWait: 5000, // 5 seconds max wait time
+        timeout: 10000, // 10 seconds timeout
       });
 
       return updated;
@@ -307,7 +357,7 @@ export const assignmentRouter = createTRPCRouter({
   create: protectedProcedure
     .input(createAssignmentSchema)
     .mutation(async ({ ctx, input }) => {
-      const { classId, title, instructions, dueDate, files, existingFileIds, maxGrade, graded, weight, sectionId, type, markSchemeId, gradingBoundaryId, inProgress } = input;
+      const { classId, title, instructions, dueDate, files, existingFileIds, aiPolicyLevel, acceptFiles, acceptExtendedResponse, acceptWorksheet, worksheetIds, gradeWithAI, studentIds, maxGrade, graded, weight, sectionId, type, markSchemeId, gradingBoundaryId, inProgress } = input;
 
       if (!ctx.user) {
         throw new TRPCError({
@@ -316,15 +366,23 @@ export const assignmentRouter = createTRPCRouter({
         });
       }
 
-      // Get all students in the class
-      const classData = await prisma.class.findUnique({
-        where: { id: classId },
-        include: {
-          students: {
-            select: { id: true }
+      // Pre-fetch data needed for the transaction (outside transaction scope)
+      const [classData, rubricData] = await Promise.all([
+        prisma.class.findUnique({
+          where: { id: classId },
+          include: {
+            students: {
+              select: { id: true }
+            }
           }
-        }
-      });
+        }),
+        markSchemeId ? prisma.markScheme.findUnique({
+          where: { id: markSchemeId },
+          select: {
+            structured: true,
+          }
+        }) : null
+      ]);
 
       if (!classData) {
         throw new TRPCError({
@@ -333,157 +391,198 @@ export const assignmentRouter = createTRPCRouter({
         });
       }
 
+      // Calculate max grade outside transaction
       let computedMaxGrade = maxGrade;
-      if (markSchemeId) {
-        const rubric = await prisma.markScheme.findUnique({
-          where: { id: markSchemeId },
-          select: {
-            structured: true,
-          }
-        });
-
-        const parsedRubric = JSON.parse(rubric?.structured || "{}");
-
-        // Calculate max grade from rubric criteria levels
+      if (markSchemeId && rubricData) {
+        const parsedRubric = JSON.parse(rubricData.structured || "{}");
         computedMaxGrade = parsedRubric.criteria.reduce((acc: number, criterion: any) => {
           const maxPoints = Math.max(...criterion.levels.map((level: any) => level.points));
           return acc + maxPoints;
         }, 0);
       }
-      console.log(markSchemeId, gradingBoundaryId);
 
-      // Create assignment and place at top of its scope within a single transaction
-      const teacherId = ctx.user!.id;
+      console.log(studentIds);
+
+      // Prepare submission data outside transaction
+      const submissionData = studentIds && studentIds.length > 0 
+        ? studentIds.map((studentId) => ({
+            student: { connect: { id: studentId } }
+          }))
+        : classData.students.map((student) => ({
+            student: { connect: { id: student.id } }
+          }));
+
+      const teacherId = ctx.user.id;
+
+      // Minimal transaction - only for critical operations
       const assignment = await prisma.$transaction(async (tx) => {
+        // Create assignment with order 0 (will be at top)
         const created = await tx.assignment.create({
-        data: {
-          title,
-          instructions,
-          dueDate: new Date(dueDate),
-          maxGrade: markSchemeId ? computedMaxGrade : maxGrade,
-          graded,
-          weight,
-          type,
-            order: 1,
-          inProgress: inProgress || false,
-          class: {
-            connect: { id: classId }
-          },
-          ...(sectionId && {
-            section: {
-              connect: { id: sectionId }
-            }
-          }),
-          ...(markSchemeId && {
-            markScheme: {
-              connect: { id: markSchemeId }
-            }
-          }),
-          ...(gradingBoundaryId && {
-            gradingBoundary: {
-              connect: { id: gradingBoundaryId }
-            }
-          }),
-          submissions: {
-            create: classData.students.map((student) => ({
-              student: {
-                connect: { id: student.id }
+          data: {
+            title,
+            instructions,
+            dueDate: new Date(dueDate),
+            maxGrade: markSchemeId ? computedMaxGrade : maxGrade,
+            graded,
+            weight,
+            type,
+            ...(aiPolicyLevel && { aiPolicyLevel }),
+            acceptFiles,
+            acceptExtendedResponse,
+            acceptWorksheet,
+            ...(worksheetIds && {
+              worksheets: {
+                connect: worksheetIds.map(id => ({ id }))
               }
-            }))
-          },
+            }),
+            gradeWithAI,
+            ...(studentIds && {
+              assignedTo: {
+                connect: studentIds.map(id => ({ id }))
+              }
+            }),
+            order: 0, // Set to 0 to place at top
+            inProgress: inProgress || false,
+            class: {
+              connect: { id: classId }
+            },
+            ...(sectionId && {
+              section: {
+                connect: { id: sectionId }
+              }
+            }),
+            ...(markSchemeId && {
+              markScheme: {
+                connect: { id: markSchemeId }
+              }
+            }),
+            ...(gradingBoundaryId && {
+              gradingBoundary: {
+                connect: { id: gradingBoundaryId }
+              }
+            }),
+            submissions: {
+              create: submissionData
+            },
             teacher: {
               connect: { id: teacherId }
             }
-        },
+          },
           select: {
-          id: true,
-          title: true,
-          instructions: true,
-          dueDate: true,
-          maxGrade: true,
-          graded: true,
-          weight: true,
-          type: true,
-          attachments: {
-            select: {
-              id: true,
-              name: true,
-              type: true,
+            id: true,
+            title: true,
+            instructions: true,
+            dueDate: true,
+            maxGrade: true,
+            graded: true,
+            weight: true,
+            type: true,
+            attachments: {
+              select: {
+                id: true,
+                name: true,
+                type: true,
+              }
+            },
+            section: {
+              select: {
+                id: true,
+                name: true
+              }
+            },
+            teacher: {
+              select: {
+                id: true,
+                username: true
+              }
+            },
+            class: {
+              select: {
+                id: true,
+                name: true
+              }
             }
-          },
-          section: {
-            select: {
-              id: true,
-              name: true
-            }
-          },
-          teacher: {
-            select: {
-              id: true,
-              username: true
-            }
-          },
-          class: {
-            select: {
-              id: true,
-              name: true
-            }
-          }
           }
         });
 
-        // Insert new assignment at top of unified list and normalize
-        const unified = await getUnifiedList(tx, classId);
-        const withoutNew = unified.filter(item => !(item.id === created.id && item.type === 'assignment'));
-        const reindexed = [{ id: created.id, type: 'assignment' as const }, ...withoutNew.map(item => ({ id: item.id, type: item.type }))];
-        await normalizeUnifiedList(tx, classId, reindexed);
+        // Optimized reordering - only increment existing items by 1
+        // This is much faster than reordering everything
+        await tx.assignment.updateMany({
+          where: {
+            classId: classId,
+            id: { not: created.id },
+          },
+          data: {
+            order: { increment: 1 }
+          }
+        });
+        
+        await tx.section.updateMany({
+          where: {
+            classId: classId,
+          },
+          data: {
+            order: { increment: 1 }
+          }
+        });
+
+        // Update the created assignment to have order 1
+        await tx.assignment.update({
+          where: { id: created.id },
+          data: { order: 1 }
+        });
 
         return created;
+      }, {
+        maxWait: 10000, // Increased to 10 seconds max wait time
+        timeout: 20000, // Increased to 20 seconds timeout for safety
       });
 
-      // NOTE: Files are now handled via direct upload endpoints
-      // The files field in the schema is for metadata only
-      // Actual file uploads should use getAssignmentUploadUrls endpoint
-      let uploadedFiles: UploadedFile[] = [];
+      // Handle file operations outside transaction
+      const fileOperations: Promise<any>[] = [];
+
+      // Process direct upload files
       if (files && files.length > 0) {
-        // Create direct upload files instead of processing base64
-        uploadedFiles = await createDirectUploadFiles(files, ctx.user.id, undefined, assignment.id);
-      }
-
-      // Update assignment with new file attachments
-      if (uploadedFiles.length > 0) {
-        await prisma.assignment.update({
-          where: { id: assignment.id },
-          data: {
-            attachments: {
-              create: uploadedFiles.map(file => ({
-                name: file.name,
-                type: file.type,
-                size: file.size,
-                path: file.path,
-                ...(file.thumbnailId && {
-                  thumbnail: {
-                    connect: { id: file.thumbnailId }
+        fileOperations.push(
+          createDirectUploadFiles(files, ctx.user.id, undefined, assignment.id)
+            .then(uploadedFiles => {
+              if (uploadedFiles.length > 0) {
+                return prisma.assignment.update({
+                  where: { id: assignment.id },
+                  data: {
+                    attachments: {
+                      create: uploadedFiles.map(file => ({
+                        name: file.name,
+                        type: file.type,
+                        size: file.size,
+                        path: file.path,
+                      }))
+                    }
                   }
-                })
-              }))
-            }
-          }
-        });
+                });
+              }
+            })
+        );
       }
 
-      // Connect existing files if provided
+      // Connect existing files
       if (existingFileIds && existingFileIds.length > 0) {
-        await prisma.assignment.update({
-          where: { id: assignment.id },
-          data: {
-            attachments: {
-              connect: existingFileIds.map(fileId => ({ id: fileId }))
+        fileOperations.push(
+          prisma.assignment.update({
+            where: { id: assignment.id },
+            data: {
+              attachments: {
+                connect: existingFileIds.map(fileId => ({ id: fileId }))
+              }
             }
-          }
-        });
+          })
+        );
       }
+
+      // Execute file operations in parallel
+      await Promise.all(fileOperations);
       
+      // Send notifications asynchronously (non-blocking)
       sendNotifications(classData.students.map(student => student.id), {
         title: `🔔 New assignment for ${classData.name}`,
         content:
@@ -491,7 +590,7 @@ export const assignmentRouter = createTRPCRouter({
         Due date: ${new Date(dueDate).toLocaleDateString()}.
         [Link to assignment](/class/${classId}/assignments/${assignment.id})`
       }).catch(error => {
-        logger.error('Failed to send assignment notifications:');
+        logger.error('Failed to send assignment notifications:', error);
       });
 
       return assignment;
@@ -499,7 +598,7 @@ export const assignmentRouter = createTRPCRouter({
   update: protectedProcedure
     .input(updateAssignmentSchema)
     .mutation(async ({ ctx, input }) => {
-      const { id, title, instructions, dueDate, files, existingFileIds, maxGrade, graded, weight, sectionId, type, inProgress } = input;
+      const { id, title, instructions, dueDate, files, existingFileIds, worksheetIds, aiPolicyLevel, maxGrade, graded, weight, sectionId, type, inProgress, acceptFiles, acceptExtendedResponse, acceptWorksheet, gradeWithAI, studentIds } = input;
 
       if (!ctx.user) {
         throw new TRPCError({
@@ -508,36 +607,51 @@ export const assignmentRouter = createTRPCRouter({
         });
       }
 
-      // Get the assignment with current attachments
-      const assignment = await prisma.assignment.findFirst({
-        where: {
-          id,
-          teacherId: ctx.user.id,
-        },
-        include: {
-          attachments: {
-            select: {
-              id: true,
-              name: true,
-              type: true,
-              path: true,
-              size: true,
-              uploadStatus: true,
-              thumbnail: {
-                select: {
-                  path: true
+      // Pre-fetch all necessary data outside transaction
+      const [assignment, classData] = await Promise.all([
+        prisma.assignment.findFirst({
+          where: {
+            id,
+            teacherId: ctx.user.id,
+          },
+          include: {
+            attachments: {
+              select: {
+                id: true,
+                name: true,
+                type: true,
+                path: true,
+                size: true,
+                uploadStatus: true,
+                thumbnail: {
+                  select: {
+                    path: true
+                  }
                 }
+              },
+            },
+            class: {
+              select: {
+                id: true,
+                name: true
               }
             },
+            markScheme: true,
           },
-          class: {
-            select: {
-              id: true,
-              name: true
+        }),
+        prisma.class.findFirst({
+          where: { 
+            assignments: { 
+              some: { id } 
+            } 
+          },
+          include: {
+            students: {
+              select: { id: true }
             }
-          },
-        },
-      });
+          }
+        })
+      ]);
 
       if (!assignment) {
         throw new TRPCError({
@@ -546,145 +660,189 @@ export const assignmentRouter = createTRPCRouter({
         });
       }
 
-      // NOTE: Files are now handled via direct upload endpoints
-      let uploadedFiles: UploadedFile[] = [];
-      if (files && files.length > 0) {
-        // Create direct upload files instead of processing base64
-        uploadedFiles = await createDirectUploadFiles(files, ctx.user.id, undefined, input.id);
-      }
+      // Prepare submission data outside transaction if needed
+      const submissionData = studentIds && studentIds.length > 0 
+        ? studentIds.map((studentId) => ({
+            student: { connect: { id: studentId } }
+          }))
+        : classData?.students.map((student) => ({
+            student: { connect: { id: student.id } }
+          }));
 
-      // Delete removed attachments from storage before updating database
+      // Handle file deletion operations outside transaction
+      const fileDeletionPromises: Promise<void>[] = [];
       if (input.removedAttachments && input.removedAttachments.length > 0) {
         const filesToDelete = assignment.attachments.filter((file) =>
           input.removedAttachments!.includes(file.id)
         );
 
-        // Delete files from storage (only if they were actually uploaded)
-        await Promise.all(filesToDelete.map(async (file) => {
-          try {
-            // Only delete from GCS if the file was successfully uploaded
-            if (file.uploadStatus === 'COMPLETED') {
-              // Delete the main file
-              await deleteFile(file.path);
-
-              // Delete thumbnail if it exists
-              if (file.thumbnail?.path) {
-                await deleteFile(file.thumbnail.path);
-              }
+        filesToDelete.forEach((file) => {
+          if (file.uploadStatus === 'COMPLETED') {
+            fileDeletionPromises.push(
+              deleteFile(file.path).catch(error => {
+                console.warn(`Failed to delete file ${file.path}:`, error);
+              })
+            );
+            if (file.thumbnail?.path) {
+              fileDeletionPromises.push(
+                deleteFile(file.thumbnail.path).catch(error => {
+                  console.warn(`Failed to delete thumbnail ${file.thumbnail!.path}:`, error);
+                })
+              );
             }
-          } catch (error) {
-            console.warn(`Failed to delete file ${file.path}:`, error);
           }
-        }));
+        });
       }
 
-      // Update assignment
-      const updatedAssignment = await prisma.assignment.update({
-        where: { id },
-        data: {
-          ...(title && { title }),
-          ...(instructions && { instructions }),
-          ...(dueDate && { dueDate: new Date(dueDate) }),
-          ...(maxGrade && { maxGrade }),
-          ...(graded !== undefined && { graded }),
-          ...(weight && { weight }),
-          ...(type && { type }),
-          ...(inProgress !== undefined && { inProgress }),
-          ...(sectionId !== undefined && {
-            section: sectionId ? {
-              connect: { id: sectionId }
-            } : {
-              disconnect: true
-            }
-          }),
-          ...(uploadedFiles.length > 0 && {
-            attachments: {
-              create: uploadedFiles.map(file => ({
-                name: file.name,
-                type: file.type,
-                size: file.size,
-                path: file.path,
-                ...(file.thumbnailId && {
-                  thumbnail: {
-                    connect: { id: file.thumbnailId }
-                  }
-                })
-              }))
-            }
-          }),
-          ...(existingFileIds && existingFileIds.length > 0 && {
-            attachments: {
-              connect: existingFileIds.map(fileId => ({ id: fileId }))
-            }
-          }),
-          ...(input.removedAttachments && input.removedAttachments.length > 0 && {
-            attachments: {
-              deleteMany: {
-                id: { in: input.removedAttachments }
+      // Execute file deletions in parallel
+      await Promise.all(fileDeletionPromises);
+
+      // Prepare file upload operations
+      let uploadedFiles: UploadedFile[] = [];
+      if (files && files.length > 0) {
+        uploadedFiles = await createDirectUploadFiles(files, ctx.user.id, undefined, input.id);
+      }
+
+      // Minimal transaction for database update
+      const updatedAssignment = await prisma.$transaction(async (tx) => {
+        return tx.assignment.update({
+          where: { id },
+          data: {
+            ...(title && { title }),
+            ...(instructions && { instructions }),
+            ...(dueDate && { dueDate: new Date(dueDate) }),
+            ...(maxGrade && { maxGrade }),
+            ...(graded !== undefined && { graded }),
+            ...(weight && { weight }),
+            ...(type && { type }),
+            ...(inProgress !== undefined && { inProgress }),
+            ...(acceptFiles !== undefined && { acceptFiles }),
+            ...(acceptExtendedResponse !== undefined && { acceptExtendedResponse }),
+            ...(acceptWorksheet !== undefined && { acceptWorksheet }),
+            ...(gradeWithAI !== undefined && { gradeWithAI }),
+            ...(studentIds && {
+              assignedTo: {
+                set: [], // Clear existing
+                connect: studentIds.map(id => ({ id }))
               }
-            }
-          }),
-        },
-        select: {
-          id: true,
-          title: true,
-          instructions: true,
-          dueDate: true,
-          maxGrade: true,
-          graded: true,
-          weight: true,
-          type: true,
-          createdAt: true,
-          submissions: {
-            select: {
-              student: {
-                select: {
-                  id: true,
-                  username: true
+            }),
+            ...(submissionData && {
+              submissions: {
+                deleteMany: {}, // Clear existing submissions
+                create: submissionData
+              }
+            }),
+            ...(aiPolicyLevel !== undefined && { aiPolicyLevel }),
+            ...(sectionId !== undefined && {
+              section: sectionId ? {
+                connect: { id: sectionId }
+              } : {
+                disconnect: true
+              }
+            }),
+            ...(worksheetIds && {
+              worksheets: {
+                set: [], // Clear existing
+                connect: worksheetIds.map(id => ({ id }))
+              }
+            }),
+            ...(uploadedFiles.length > 0 && {
+              attachments: {
+                create: uploadedFiles.map(file => ({
+                  name: file.name,
+                  type: file.type,
+                  size: file.size,
+                  path: file.path,
+                  ...(file.thumbnailId && {
+                    thumbnail: {
+                      connect: { id: file.thumbnailId }
+                    }
+                  })
+                }))
+              }
+            }),
+            ...(existingFileIds && existingFileIds.length > 0 && {
+              attachments: {
+                connect: existingFileIds.map(fileId => ({ id: fileId }))
+              }
+            }),
+            ...(input.removedAttachments && input.removedAttachments.length > 0 && {
+              attachments: {
+                deleteMany: {
+                  id: { in: input.removedAttachments }
                 }
               }
-            }
+            }),
           },
-          attachments: {
-            select: {
-              id: true,
-              name: true,
-              type: true,
-              thumbnail: true,
-              size: true,
-              path: true,
-              uploadedAt: true,
-              thumbnailId: true,
-            }
-          },
-          section: true,
-          teacher: true,
-          class: true
-        }
+          select: {
+            id: true,
+            title: true,
+            instructions: true,
+            dueDate: true,
+            maxGrade: true,
+            graded: true,
+            weight: true,
+            type: true,
+            createdAt: true,
+            markSchemeId: true,
+            submissions: {
+              select: {
+                student: {
+                  select: {
+                    id: true,
+                    username: true
+                  }
+                }
+              }
+            },
+            attachments: {
+              select: {
+                id: true,
+                name: true,
+                type: true,
+                thumbnail: true,
+                size: true,
+                path: true,
+                uploadedAt: true,
+                thumbnailId: true,
+              }
+            },
+            section: true,
+            teacher: true,
+            class: true
+          }
+        });
+      }, {
+        maxWait: 5000, // 5 seconds max wait time
+        timeout: 10000, // 10 seconds timeout
       });
 
-
-      if (assignment.markSchemeId) {
-        const rubric = await prisma.markScheme.findUnique({
-          where: { id: assignment.markSchemeId },
+      // Handle rubric max grade calculation outside transaction
+      if (updatedAssignment.markSchemeId) {
+        prisma.markScheme.findUnique({
+          where: { id: updatedAssignment.markSchemeId },
           select: {
             structured: true,
           }
-        });
-        const parsedRubric = JSON.parse(rubric?.structured || "{}");
-        const computedMaxGrade = parsedRubric.criteria.reduce((acc: number, criterion: any) => {
-          const maxPoints = Math.max(...criterion.levels.map((level: any) => level.points));
-          return acc + maxPoints;
-        }, 0);
+        }).then(rubric => {
+          if (rubric) {
+            const parsedRubric = JSON.parse(rubric.structured || "{}");
+            const computedMaxGrade = parsedRubric.criteria?.reduce((acc: number, criterion: any) => {
+              const maxPoints = Math.max(...criterion.levels.map((level: any) => level.points));
+              return acc + maxPoints;
+            }, 0) || 0;
 
-        await prisma.assignment.update({
-          where: { id },
-          data: {
-            maxGrade: computedMaxGrade,
+            return prisma.assignment.update({
+              where: { id },
+              data: {
+                maxGrade: computedMaxGrade,
+              }
+            });
           }
+        }).catch(error => {
+          logger.error('Failed to update max grade from rubric:', error);
         });
       }
-
 
       return updatedAssignment;
     }),
@@ -822,6 +980,12 @@ export const assignmentRouter = createTRPCRouter({
               username: true
             }
           },
+          worksheets: {
+            select: {
+              id: true,
+              name: true,
+            }
+          },
           class: {
             select: {
               id: true,
@@ -909,6 +1073,12 @@ export const assignmentRouter = createTRPCRouter({
                 select: {
                   id: true,
                   structured: true,
+                }
+              },
+              worksheets: {
+                select: {
+                  id: true,
+                  name: true,
                 }
               },
               gradingBoundary: {
@@ -1023,6 +1193,12 @@ export const assignmentRouter = createTRPCRouter({
                   id: true,
                   structured: true,
                 }
+              },
+              worksheets: {
+                select: {
+                  id: true,
+                  name: true,
+                }
               }
             },
           },
@@ -1052,7 +1228,7 @@ export const assignmentRouter = createTRPCRouter({
         });
       }
 
-      const { submissionId, submit, newAttachments, existingFileIds, removedAttachments } = input;
+      const { submissionId, submit, newAttachments, existingFileIds, removedAttachments, extendedResponse } = input;
 
       const submission = await prisma.submission.findFirst({
         where: {
@@ -1222,6 +1398,7 @@ export const assignmentRouter = createTRPCRouter({
               },
             },
           }),
+          ...(extendedResponse !== undefined && { extendedResponse }),
         },
         include: {
           attachments: {

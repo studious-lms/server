@@ -523,7 +523,7 @@ export const announcementRouter = createTRPCRouter({
 
             // If replying to a comment, verify parent comment exists and belongs to the same announcement
             if (input.parentCommentId) {
-                const parentComment = await prisma.announcementComment.findFirst({
+                const parentComment = await prisma.comment.findFirst({
                     where: {
                         id: input.parentCommentId,
                         announcementId: input.announcementId,
@@ -538,7 +538,7 @@ export const announcementRouter = createTRPCRouter({
                 }
             }
 
-            const comment = await prisma.announcementComment.create({
+            const comment = await prisma.comment.create({
                 data: {
                     content: input.content,
                     author: {
@@ -586,7 +586,7 @@ export const announcementRouter = createTRPCRouter({
                 });
             }
 
-            const comment = await prisma.announcementComment.findUnique({
+            const comment = await prisma.comment.findUnique({
                 where: { id: input.id },
             });
 
@@ -605,7 +605,7 @@ export const announcementRouter = createTRPCRouter({
                 });
             }
 
-            const updatedComment = await prisma.announcementComment.update({
+            const updatedComment = await prisma.comment.update({
                 where: { id: input.id },
                 data: {
                     content: input.content,
@@ -642,7 +642,7 @@ export const announcementRouter = createTRPCRouter({
                 });
             }
 
-            const comment = await prisma.announcementComment.findUnique({
+            const comment = await prisma.comment.findUnique({
                 where: { id: input.id },
                 include: {
                     announcement: {
@@ -667,7 +667,7 @@ export const announcementRouter = createTRPCRouter({
             // Only the author or a class teacher can delete comments
             const userId = ctx.user.id;
             const isAuthor = comment.authorId === userId;
-            const isClassTeacher = comment.announcement.class.teachers.some(
+            const isClassTeacher = comment.announcement!.class.teachers.some(
                 (teacher) => teacher.id === userId
             );
 
@@ -678,7 +678,7 @@ export const announcementRouter = createTRPCRouter({
                 });
             }
 
-            await prisma.announcementComment.delete({
+            await prisma.comment.delete({
                 where: { id: input.id },
             });
 
@@ -707,7 +707,7 @@ export const announcementRouter = createTRPCRouter({
             }
 
             // Get all top-level comments (no parent)
-            const comments = await prisma.announcementComment.findMany({
+            const comments = await prisma.comment.findMany({
                 where: {
                     announcementId: input.announcementId,
                     parentCommentId: null,
@@ -840,7 +840,7 @@ export const announcementRouter = createTRPCRouter({
                 return { reaction };
             } else if (input.commentId) {
                 // Verify comment exists and get its announcement to check class
-                const comment = await prisma.announcementComment.findUnique({
+                    const comment = await prisma.comment.findUnique({
                     where: { id: input.commentId },
                     include: {
                         announcement: {
@@ -858,7 +858,7 @@ export const announcementRouter = createTRPCRouter({
                     });
                 }
 
-                if (comment.announcement.classId !== input.classId) {
+                if (comment.announcement!.classId !== input.classId) {
                     throw new TRPCError({
                         code: "FORBIDDEN",
                         message: "Comment does not belong to this class",
@@ -1060,7 +1060,7 @@ export const announcementRouter = createTRPCRouter({
                 };
             } else if (input.commentId) {
                 // Verify comment exists
-                const comment = await prisma.announcementComment.findUnique({
+                const comment = await prisma.comment.findUnique({
                     where: { id: input.commentId },
                     include: {
                         announcement: {
@@ -1078,7 +1078,7 @@ export const announcementRouter = createTRPCRouter({
                     });
                 }
 
-                if (comment.announcement.classId !== input.classId) {
+                if (comment.announcement!.classId !== input.classId) {
                     throw new TRPCError({
                         code: "FORBIDDEN",
                         message: "Comment does not belong to this class",

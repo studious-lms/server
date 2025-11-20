@@ -154,6 +154,22 @@ export const classRouter = createTRPCRouter({
             },
           },
           assignments: {
+            ...(!isTeacher && {
+              where: {OR: [
+                {
+                  assignedTo: {
+                    some: {
+                      id: ctx.user?.id,
+                    },
+                  },
+                },
+                {
+                  assignedTo: {
+                    none: {},
+                  },
+                },
+              ],}
+            }),
             select: {
               type: true,
               id: true,
@@ -217,8 +233,8 @@ export const classRouter = createTRPCRouter({
         assignments: classData.assignments.map(assignment => ({
           ...assignment,
           late: assignment.dueDate < new Date(),
-          submitted: assignment.submissions.some(submission => submission.studentId === ctx.user?.id),
-          returned: assignment.submissions.some(submission => submission.studentId === ctx.user?.id && submission.returned),
+          submitted: assignment.submissions.find(submission => submission.studentId === ctx.user?.id)?.submitted,
+          returned: assignment.submissions.find(submission => submission.studentId === ctx.user?.id)?.returned,
         })),
       }
 
@@ -669,7 +685,9 @@ export const classRouter = createTRPCRouter({
 
         const markSchemes = await prisma.markScheme.findMany({
           where: {
-            classId: classId,
+            class: {
+              id: classId,
+            },
           },
         });
 
@@ -687,7 +705,11 @@ export const classRouter = createTRPCRouter({
 
         const markScheme = await prisma.markScheme.create({
           data: {
-            classId: classId,
+            class: {
+              connect: {
+                id: classId,
+              },
+            },
             structured: validatedStructure,
           },
         });
@@ -707,7 +729,14 @@ export const classRouter = createTRPCRouter({
 
         const markScheme = await prisma.markScheme.update({
           where: { id: markSchemeId },
-          data: { structured: validatedStructure },
+          data: {
+            class: {
+              connect: {
+                id: classId,
+              },
+            },
+            structured: validatedStructure,
+          },
         });
 
         return markScheme;
@@ -735,7 +764,9 @@ export const classRouter = createTRPCRouter({
 
         const gradingBoundaries = await prisma.gradingBoundary.findMany({
           where: {
-            classId: classId,
+            class: {
+              id: classId,
+            },
           },
         });
 
@@ -753,7 +784,11 @@ export const classRouter = createTRPCRouter({
 
         const gradingBoundary = await prisma.gradingBoundary.create({
           data: {
-            classId: classId,
+            class: {
+              connect: {
+                id: classId,
+              },
+            },
             structured: validatedStructure,
           },
         });
@@ -773,7 +808,14 @@ export const classRouter = createTRPCRouter({
 
         const gradingBoundary = await prisma.gradingBoundary.update({
           where: { id: gradingBoundaryId },
-          data: { structured: validatedStructure },
+          data: {
+            class: {
+              connect: {
+                id: classId,
+              },
+            },
+            structured: validatedStructure,
+          },
         });
 
         return gradingBoundary;

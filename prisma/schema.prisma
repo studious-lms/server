@@ -42,6 +42,15 @@ enum UploadStatus {
   CANCELLED
 }
 
+enum WorksheetQuestionType {
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  SHORT_ANSWER
+  LONG_ANSWER
+  MATH_EXPRESSION
+  ESSAY
+}
+
 enum ReactionType {
   THUMBSUP
   CELEBRATE
@@ -72,8 +81,6 @@ model User {
   verified     Boolean     @default(false)
   role         UserRole    @default(NONE)
 
-  profileId    String?     @unique
-
   teacherIn   Class[] @relation("UserTeacherToClass")
   studentIn   Class[] @relation("UserStudentToClass")
 
@@ -81,10 +88,13 @@ model User {
   sessions    Session[]
   files       File[]
   assignments Assignment[]
+  specificAssignments Assignment[] @relation("SpecificAssignmentAssignedTo")
   events      Event[]
   announcements Announcement[]
   notificationsSent Notification[] @relation("SentNotifications")
   notificationsReceived Notification[] @relation("ReceivedNotifications")
+  studentQuestionProgress StudentQuestionProgress[]
+  studentWorksheetResponses StudentWorksheetResponse[]
 
   presentAttendance  Attendance[] @relation("PresentAttendance")
   lateAttendance    Attendance[] @relation("LateAttendance")
@@ -98,7 +108,7 @@ model User {
   sentMessages Message[] @relation("SentMessages")
   mentions Mention[] @relation("UserMentions")
   createdLabChats LabChat[] @relation("CreatedLabChats")
-  announcementComments AnnouncementComment[]
+  comments Comment[]
   reactions Reaction[]
 
 }
@@ -132,14 +142,16 @@ model Class {
   events        Event[]
   sections      Section[]
   sessions      Session[]
+  worksheets    Worksheet[]
   students      User[]         @relation("UserStudentToClass")
   teachers      User[]         @relation("UserTeacherToClass")
-  markSchemes   MarkScheme[] @relation("ClassToMarkScheme")
-  gradingBoundaries GradingBoundary[] @relation("ClassToGradingBoundary")
+  // markSchemes   MarkScheme[] @relation("ClassToMarkScheme")
+  // gradingBoundaries GradingBoundary[] @relation("ClassToGradingBoundary")
   draftFiles File[] @relation("ClassDraftFiles")
   classFiles Folder? @relation("ClassFiles")
   labChats LabChat[] @relation("ClassLabChats")
-
+  markSchemes MarkScheme[]
+  gradingBoundaries GradingBoundary[]
   school    School? @relation(fields: [schoolId], references: [id])
   schoolId  String?
 }
@@ -147,7 +159,8 @@ model Class {
 model MarkScheme {
   id String @id @default(uuid())
   classId String
-  class Class[] @relation("ClassToMarkScheme")
+  // class Class[] @relation("ClassToMarkScheme")
+  class Class? @relation(fields: [classId], references: [id], onDelete: Cascade)
   structured String
   assignments Assignment[]
 }
@@ -155,7 +168,8 @@ model MarkScheme {
 model GradingBoundary {
   id String @id @default(uuid())
   classId String
-  class Class[] @relation("ClassToGradingBoundary")
+  // class Class[] @relation("ClassToGradingBoundary")
+  class Class? @relation(fields: [classId], references: [id], onDelete: Cascade)
   structured String
   assignments Assignment[]
 }
@@ -239,7 +253,15 @@ model Assignment {
   class         Class          @relation(fields: [classId], references: [id], onDelete: Cascade)
   classId       String
   attachments   File[]
+  acceptFiles Boolean @default(false)
+  acceptExtendedResponse Boolean @default(false)
+  acceptWorksheet Boolean @default(false)
+  gradeWithAI Boolean @default(false)
+
+  aiPolicyLevel Int @default(0)
+
   submissions   Submission[]
+  assignedTo    User[] @relation("SpecificAssignmentAssignedTo")
   section       Section?       @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   sectionId     String?
   graded        Boolean        @default(false)
@@ -255,6 +277,7 @@ model Assignment {
   order         Int?
   gradingBoundary GradingBoundary? @relation(fields: [gradingBoundaryId], references: [id], onDelete: Cascade)
   gradingBoundaryId String?
+  worksheets Worksheet[] @relation("AssignmentWorksheets")
 }
 
 
@@ -269,23 +292,25 @@ model Announcement {
   class   Class @relation(fields: [classId], references: [id], onDelete: Cascade)
   classId String
   attachments File[] @relation("AnnouncementAttachments")
-  comments AnnouncementComment[]
+  comments Comment[]
   reactions Reaction[]
 }
 
-model AnnouncementComment {
+model Comment {
   id            String @id @default(uuid())
   content       String
   author        User @relation(fields: [authorId], references: [id], onDelete: Cascade)
   authorId      String
-  announcement  Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
-  announcementId String
-  parentComment AnnouncementComment? @relation("CommentReplies", fields: [parentCommentId], references: [id], onDelete: Cascade)
+  announcement  Announcement? @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  announcementId String?
+  parentComment Comment? @relation("CommentReplies", fields: [parentCommentId], references: [id], onDelete: Cascade)
   parentCommentId String?
-  replies       AnnouncementComment[] @relation("CommentReplies")
+  replies       Comment[] @relation("CommentReplies")
   reactions     Reaction[]
   createdAt     DateTime @default(now())
   modifiedAt    DateTime? @updatedAt
+  studentQuestionProgress StudentQuestionProgress? @relation("StudentQuestionProgressComments", fields: [studentQuestionProgressId], references: [id], onDelete: Cascade)
+  studentQuestionProgressId String?
 }
 
 model Reaction {
@@ -295,7 +320,7 @@ model Reaction {
   userId        String
   announcement  Announcement? @relation(fields: [announcementId], references: [id], onDelete: Cascade)
   announcementId String?
-  comment       AnnouncementComment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  comment       Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
   commentId     String?
   createdAt     DateTime @default(now())
   
@@ -318,7 +343,9 @@ model Submission {
 
   attachments File[]  @relation("SubmissionFile")
   annotations File[]  @relation("SubmissionAnnotations")
-
+  worksheetResponses StudentWorksheetResponse[]
+  extendedResponse String?
+  
   gradeReceived Int?
 
   rubricState String?
@@ -471,6 +498,68 @@ model Mention {
   @@unique([messageId, userId])
 }
 
+model Worksheet {
+  id String @id @default(uuid())
+  name String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  classId String
+  class Class? @relation(fields: [classId], references: [id], onDelete: Cascade)
+  assignments Assignment[] @relation("AssignmentWorksheets")
+  questions WorksheetQuestion[]
+  studentWorksheetResponses StudentWorksheetResponse[]
+}
+
+model WorksheetQuestion {
+  id String @id @default(uuid())
+  worksheetId String
+  worksheet Worksheet @relation(fields: [worksheetId], references: [id], onDelete: Cascade)
+  type WorksheetQuestionType
+  question String
+  answer String
+  options Json?  @default("{}")
+  markScheme Json?  @default("{}")
+  points Int @default(0)
+  order Int? @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  studentResponses StudentQuestionProgress[]
+}
+
+model StudentWorksheetResponse {
+  id String @id @default(uuid())
+  studentId String
+  student User @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  worksheetId String
+  worksheet Worksheet @relation(fields: [worksheetId], references: [id], onDelete: Cascade)
+  responses StudentQuestionProgress[]
+  submission Submission? @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  submissionId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  submittedAt DateTime?
+  submitted Boolean @default(false)
+}
+
+model StudentQuestionProgress {
+  id String @id @default(uuid())
+  studentId String
+  student User @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  questionId String
+  question WorksheetQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  response String
+  isCorrect Boolean @default(false)
+  markschemeState Json? @default("{}")
+  points Int @default(0)
+  comments Comment[] @relation("StudentQuestionProgressComments")
+  feedback String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime? @updatedAt
+  studentWorksheetResponseId String?
+  studentWorksheetResponse StudentWorksheetResponse? @relation(fields: [studentWorksheetResponseId], references: [id], onDelete: Cascade)
+  
+  @@index([studentId, questionId])
+}
 
 model SchoolDevelopementProgram {
   id String @id

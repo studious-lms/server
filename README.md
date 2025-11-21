@@ -34,14 +34,11 @@ This is the backend server for the Studious application. It provides a RESTful a
    ```
 
 3. **Set up environment variables:**
-   Create a `.env` file in the root directory with the following variables:
-   ```env
-   DATABASE_URL="postgresql://username:password@localhost:5432/easy_lms"
-   PORT=3001
-   NEXT_PUBLIC_APP_URL=http://localhost:3000
-   NODE_ENV=development
-   LOG_MODE=info
+   Copy the example environment file and update with your values:
+   ```bash
+   cp .env.example .env
    ```
+   Then edit `.env` with your configuration. See `.env.example` for all required variables.
 
 4. **Set up the database:**
    - Create a PostgreSQL database named `easy_lms`
@@ -119,6 +116,10 @@ npx prisma studio
 - `npm run dev` — Start in development mode with hot reload
 - `npm run build` — Compile TypeScript to JavaScript
 - `npm start` — Start the compiled server
+- `npm test` — Run tests with Vitest
+- `npm run test:run` — Run tests once
+- `npm run test:watch` — Run tests in watch mode
+- `npm run test:coverage` — Run tests with coverage report
 
 ## Environment Variables
 
@@ -137,6 +138,32 @@ The server uses TypeScript and includes:
 - **Socket.IO** for real-time communication
 - **Prisma** for database operations
 - **Express** middleware for CORS and logging
+
+### Testing
+
+Tests use a separate environment configuration:
+
+1. **Set up test environment:**
+   ```bash
+   cp .env.test.example .env.test
+   ```
+   Update `.env.test` with your test database configuration.
+
+2. **Create test database:**
+   ```bash
+   createdb easy_lms_test
+   ```
+
+3. **Run tests:**
+   ```bash
+   npm test
+   ```
+
+The test environment:
+- Uses a separate database (`easy_lms_test`)
+- Runs on a different port (3002)
+- Has minimal logging (error level only)
+- Mocks external services (Google Cloud, Pusher, etc.)
 
 ## License
 

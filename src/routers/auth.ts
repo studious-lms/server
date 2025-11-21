@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { compare, hash } from "bcryptjs";
 import { transport } from "../utils/email.js";
 import { prismaWrapper } from "../utils/prismaWrapper.js";
+import { env } from "../lib/config/env.js";
 
 const loginSchema = z.object({
   username: z.string(),
@@ -110,10 +111,10 @@ export const authRouter = createTRPCRouter({
       //   from: 'noreply@studious.sh',
       //   to: user.email,
       //   subject: 'Verify your email',
-      //   text: `Click the link to verify your email: ${process.env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`,
+      //   text: `Click the link to verify your email: ${env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`,
       // });
 
-      console.log(`${process.env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`)
+      console.log(`${env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`)
 
       return {
         user: {
@@ -284,7 +285,7 @@ export const authRouter = createTRPCRouter({
         //   from: 'noreply@studious.sh',
         //   to: user.email,
         //   subject: 'Verify your email',
-        //   text: `Click the link to verify your email: ${process.env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`,
+        //   text: `Click the link to verify your email: ${env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`,
         // });
 
         return { success: true };

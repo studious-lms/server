@@ -12,21 +12,49 @@ import { setupSocketHandlers } from './socket/handlers.js';
 import { bucket } from './lib/googleCloudStorage.js';
 import { prisma } from './lib/prisma.js';
 
-dotenv.config();
+import { authLimiter, generalLimiter, helmetConfig, uploadLimiter } from './middleware/security.js';
+
+import * as Sentry from "@sentry/node";
+import { env } from './lib/config/env.js';
+import compression from 'compression';
+import { v4 as uuidv4 } from 'uuid';
+
+
+import "./instrument.js";
 
 const app = express();
 
+app.use(helmetConfig);
+app.use(compression());
+
+app.use((req, res, next) => {
+  const requestId = uuidv4();
+  res.setHeader('X-Request-ID', requestId);
+  next();
+});
+
+app.use(generalLimiter);
+
+const allowedOrigins = env.NODE_ENV === 'production'
+? [
+    'https://www.studious.sh',
+    'https://studious.sh',
+    env.NEXT_PUBLIC_APP_URL,
+    'http://localhost:3000',
+
+  ].filter(Boolean)
+: [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:3001',
+
+    env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  ];
+
 // CORS middleware
 app.use(cors({
-  origin: [
-    'http://localhost:3000',  // Frontend development server
-    'http://localhost:3001',  // Server port
-    'http://127.0.0.1:3000',  // Alternative localhost
-    'http://127.0.0.1:3001',  // Alternative localhost
-    'https://www.studious.sh',  // Production frontend
-    'https://studious.sh',     // Production frontend (without www)
-    process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-  ],
+  origin: allowedOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-user'],
@@ -35,16 +63,6 @@ app.use(cors({
 
 // Handle preflight OPTIONS requests
 app.options('*', (req, res) => {
-  const allowedOrigins = [
-    'http://localhost:3000',
-    'http://localhost:3001', 
-    'http://127.0.0.1:3000',
-    'http://127.0.0.1:3001',
-    'https://www.studious.sh',  // Production frontend
-    'https://studious.sh',     // Production frontend (without www)
-    process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-  ];
-  
   const origin = req.headers.origin;
   if (origin && allowedOrigins.includes(origin)) {
     res.header('Access-Control-Allow-Origin', origin);
@@ -86,11 +104,49 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use("/panel", async (_, res) => {
+  if (env.NODE_ENV !== "development") {
+    return res.status(404).send("Not Found");
+  }
+
+  // Dynamically import renderTrpcPanel only in development
+  const { renderTrpcPanel } = await import("trpc-ui");
+
+  return res.send(
+    renderTrpcPanel(appRouter, {
+      url: "/trpc", // Base url of your trpc server
+      meta: {
+        title: "Studious Backend",
+        description:
+          "This is the backend for the Studious application.",
+      },
+    })
+  );
+});
+
+
 // Create HTTP server
 const httpServer = createServer(app);
 
-app.get('/health', (req, res) => {
-  res.status(200).json({ message: 'OK' });
+app.get('/health', async (req, res) => {
+
+  try {
+    // Check database connectivity
+    await prisma.$queryRaw`SELECT 1`;
+    
+    res.status(200).json({ 
+      status: 'OK',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      database: 'connected'
+    });
+  } catch (error) {
+    res.status(503).json({ 
+      status: 'ERROR',
+      database: 'disconnected',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
 });
 
 // Setup Socket.IO
@@ -103,7 +159,7 @@ const io = new Server(httpServer, {
       'http://127.0.0.1:3001',  // Alternative localhost
       'https://www.studious.sh',  // Production frontend
       'https://studious.sh',     // Production frontend (without www)
-      process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+      env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true,
@@ -326,12 +382,15 @@ app.get('/api/files/:fileId', async (req, res) => {
   }
 });
 
+app.use('/trpc/auth.login', authLimiter);
+app.use('/trpc/auth.register', authLimiter);
+
 // File upload endpoint for secure file uploads (supports both POST and PUT)
-app.post('/api/upload/:filePath', async (req, res) => {
+app.post('/api/upload/:filePath', uploadLimiter, async (req, res) => {
   handleFileUpload(req, res);
 });
 
-app.put('/api/upload/:filePath', async (req, res) => {
+app.put('/api/upload/:filePath', uploadLimiter, async (req, res) => {
   handleFileUpload(req, res);
 });
 
@@ -348,7 +407,7 @@ function handleFileUpload(req: any, res: any) {
       'http://127.0.0.1:3001',
       'https://www.studious.sh',  // Production frontend
       'https://studious.sh',     // Production frontend (without www)
-      process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+      env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
     ];
     
     if (origin && allowedOrigins.includes(origin)) {
@@ -411,7 +470,19 @@ app.use(
   })
 );
 
-const PORT = process.env.PORT || 3001;
+// IMPORTANT: Sentry error handler must be added AFTER all other middleware and routes
+// but BEFORE any other error handlers
+Sentry.setupExpressErrorHandler(app);
+
+// app.use(function onError(err, req, res, next) {
+//   // The error id is attached to `res.sentry` to be returned
+//   // and optionally displayed to the user for support.
+//   res.statusCode = 500;
+//   res.end(res.sentry + "\n");
+// });
+
+
+const PORT = env.PORT || 3001;
 
 httpServer.listen(PORT, () => {
   logger.info(`Server running on port ${PORT}`, { 
@@ -422,10 +493,10 @@ httpServer.listen(PORT, () => {
 
 // log all env variables
 logger.info('Configurations', {
-  NODE_ENV: process.env.NODE_ENV,
-  PORT: process.env.PORT,
-  NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
-  LOG_MODE: process.env.LOG_MODE,
+  NODE_ENV: env.NODE_ENV,
+  PORT: env.PORT,
+  NEXT_PUBLIC_APP_URL: env.NEXT_PUBLIC_APP_URL,
+  LOG_MODE: env.LOG_MODE,
 });
 
 // Log CORS configuration
@@ -435,6 +506,35 @@ logger.info('CORS Configuration', {
     'http://localhost:3001', 
     'http://127.0.0.1:3000',
     'http://127.0.0.1:3001',
-    process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
   ]
 });
+
+const gracefulShutdown = (signal: string) => {
+  logger.info(`Received ${signal}, shutting down gracefully`);
+  
+  httpServer.close(() => {
+    logger.info('HTTP server closed');
+    
+    io.close(() => {
+      logger.info('Socket.IO server closed');
+      
+      prisma.$disconnect().then(() => {
+        logger.info('Database connections closed');
+        process.exit(0);
+      }).catch((err) => {
+        logger.error('Error disconnecting from database', { error: err });
+        process.exit(1);
+      });
+    });
+  });
+  
+  // Force shutdown after 10 seconds
+  setTimeout(() => {
+    logger.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

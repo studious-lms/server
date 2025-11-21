@@ -292,7 +292,9 @@ export const worksheetRouter = createTRPCRouter({
             responses: {
               include: {
                 comments: {
-                  select: commentSelect,
+                  select: {
+                    id: true,
+                  },
                 },
               },
             },
@@ -314,7 +316,9 @@ export const worksheetRouter = createTRPCRouter({
             responses: {
               include: {
                 comments: {
-                  select: commentSelect,
+                  select: {
+                    id: true,
+                  },
                 },
               },
             },
@@ -325,7 +329,6 @@ export const worksheetRouter = createTRPCRouter({
       });
 
 
-      console.log(worksheetResponse);
       return worksheetResponse;
     }),
   answerQuestion: protectedProcedure

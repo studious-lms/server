@@ -9,6 +9,11 @@ generator client {
   // output   = "../generated/prisma"
 }
 
+// @todo: add type safety to json fields.
+generator json {
+  provider = "prisma-json-types-generator"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")

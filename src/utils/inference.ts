@@ -3,15 +3,12 @@ import { logger } from './logger.js';
 import { prisma } from '../lib/prisma.js';
 import { pusher } from '../lib/pusher.js';
 import { ensureAIUserExists, getAIUserId } from './aiUser.js';
+import { env } from '../lib/config/env.js';
 
-// Initialize inference client (Cohere via OpenAI SDK)
-
-logger.info('Inference API Key', { apiKey: process.env.INFERENCE_API_KEY });
-logger.info('Inference API Base URL', { baseURL: process.env.INFERENCE_API_BASE_URL });
 
 export const inferenceClient = new OpenAI({
-  apiKey: process.env.INFERENCE_API_KEY,
-  baseURL: process.env.INFERENCE_API_BASE_URL,
+  apiKey: env.INFERENCE_API_KEY,
+  baseURL: env.INFERENCE_API_BASE_URL,
 });
 
 // Types for lab chat context
@@ -180,7 +177,7 @@ export async function generateInferenceResponse(
  * Validate inference configuration
  */
 export function validateInferenceConfig(): boolean {
-  if (!process.env.INFERENCE_API_KEY) {
+  if (!env.INFERENCE_API_KEY) {
     logger.error('Inference API key not configured for Cohere');
     return false;
   }

@@ -1,17 +1,17 @@
-import dotenv from 'dotenv';
-dotenv.config();
+
 import { Storage } from '@google-cloud/storage';
 import { TRPCError } from '@trpc/server';
+import { env } from './config/env.js';
 
 const storage = new Storage({
-  projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
+  projectId: env.GOOGLE_CLOUD_PROJECT_ID,
   credentials: {
-    client_email: process.env.GOOGLE_CLOUD_CLIENT_EMAIL,
-    private_key: process.env.GOOGLE_CLOUD_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    client_email: env.GOOGLE_CLOUD_CLIENT_EMAIL,
+    private_key: env.GOOGLE_CLOUD_PRIVATE_KEY?.replace(/\\n/g, '\n'),
   },
 });
 
-export const bucket = storage.bucket(process.env.GOOGLE_CLOUD_BUCKET_NAME!);
+export const bucket = storage.bucket(env.GOOGLE_CLOUD_BUCKET_NAME!);
 
 // Short expiration time for signed URLs (5 minutes)
 const SIGNED_URL_EXPIRATION = 5 * 60 * 1000;

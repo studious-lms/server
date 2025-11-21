@@ -1,5 +1,10 @@
 /node_modules
 /dist
 .env
+.env.test
+.env.local
+.env.production
 package-lock.json
 /generated
+# Sentry Config File
+.sentryclirc

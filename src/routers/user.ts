@@ -6,6 +6,7 @@ import { createDirectUploadFiles, type DirectUploadFile } from "../lib/fileUploa
 import { getSignedUrl } from "../lib/googleCloudStorage.js";
 import { logger } from "../utils/logger.js";
 import { bucket } from "../lib/googleCloudStorage.js";
+import { env } from "../lib/config/env.js";
 
 // Helper function to convert file path to backend proxy URL
 function getFileUrl(filePath: string | null): string | null {
@@ -17,7 +18,7 @@ function getFileUrl(filePath: string | null): string | null {
   }
   
   // Convert GCS path to full backend proxy URL
-  const backendUrl = process.env.BACKEND_URL || 'http://localhost:3001';
+  const backendUrl = env.BACKEND_URL || 'http://localhost:3001';
   return `${backendUrl}/api/files/${encodeURIComponent(filePath)}`;
 }
 
@@ -229,7 +230,7 @@ export const userRouter = createTRPCRouter({
         const filePath = `users/${ctx.user.id}/profile/${uniqueFilename}`;
 
         // Generate backend proxy upload URL instead of direct GCS signed URL
-        const backendUrl = process.env.BACKEND_URL || 'http://localhost:3001';
+        const backendUrl = env.BACKEND_URL || 'http://localhost:3001';
         const uploadUrl = `${backendUrl}/api/upload/${encodeURIComponent(filePath)}`;
 
         logger.info('Generated upload URL', {

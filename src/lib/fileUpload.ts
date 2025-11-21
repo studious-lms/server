@@ -4,6 +4,7 @@ import { getSignedUrl, objectExists } from "./googleCloudStorage.js";
 import { generateMediaThumbnail } from "./thumbnailGenerator.js";
 import { prisma } from "./prisma.js";
 import { logger } from "../utils/logger.js";
+import { env } from "./config/env.js";
 
 export interface FileData {
   name: string;
@@ -136,7 +137,7 @@ export async function createDirectUploadFile(
     const uploadSessionId = uuidv4();
     
     // Generate backend proxy upload URL (not direct GCS)
-    const baseUrl = process.env.BACKEND_URL || 'http://localhost:3001';
+    const baseUrl = env.BACKEND_URL || 'http://localhost:3001';
     const uploadUrl = `${baseUrl}/api/upload/${encodeURIComponent(filePath)}`;
     const uploadExpiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes from now
     
@@ -231,7 +232,7 @@ export async function confirmDirectUpload(
     // If uploadSuccess is true, verify the object actually exists in GCS
     if (uploadSuccess) {
       try {
-        const exists = await objectExists(process.env.GOOGLE_CLOUD_BUCKET_NAME!, fileRecord.path);
+        const exists = await objectExists(env.GOOGLE_CLOUD_BUCKET_NAME!, fileRecord.path);
         if (!exists) {
           actualUploadSuccess = false;
           actualErrorMessage = 'File upload reported as successful but object not found in Google Cloud Storage';

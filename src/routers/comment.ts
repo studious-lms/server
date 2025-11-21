@@ -21,27 +21,6 @@ export const commentSelect = {
             },
         },
     },
-    replies: {
-        select: {
-            id: true,
-            content: true,
-            createdAt: true,
-            modifiedAt: true,
-            author: {
-                select: {
-                    id: true,
-                    username: true,
-                    profile: {
-                        select: {
-                            displayName: true,
-                            profilePicture: true,
-                            profilePictureThumbnail: true,
-                        },
-                    },
-                },
-            },
-        },
-    },
     reactions: {
         select: {
             type: true,
@@ -80,7 +59,34 @@ export const commentRouter = createTRPCRouter({
                 message: "Comment not found",
             });
         }
+
         return comment;
+    }),
+    getReplies: protectedProcedure
+    .input(z.object({
+        commentId: z.string(),
+    }))
+    .query(async ({ ctx, input }) => {
+        const replies = await prisma.comment.findMany({
+            where: { parentCommentId: input.commentId
+            },
+            include: {
+                author: {
+                    select: {
+                        id: true,
+                        username: true,
+                        profile: {
+                            select: {
+                                displayName: true,
+                                profilePicture: true,
+                                profilePictureThumbnail: true,
+                            },
+                        },
+                    },
+                },
+            }
+        });
+        return replies;
     }),
     replyToComment: protectedProcedure
     .input(z.object({

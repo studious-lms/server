@@ -91,9 +91,11 @@ export const publicProcedure = t.procedure.use(loggingMiddleware);
 
 // Protected procedures
 export const protectedProcedure = publicProcedure.use(isAuthed);
+
 export const protectedClassMemberProcedure = protectedProcedure
   .input(z.object({ classId: z.string() }).passthrough())
   .use(isMemberInClass);
+
 export const protectedTeacherProcedure = protectedProcedure
   .input(z.object({ classId: z.string() }).passthrough())
   .use(isTeacherInClass);

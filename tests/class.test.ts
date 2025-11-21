@@ -1,4 +1,4 @@
-import { test, expect, describe, beforeEach } from 'vitest';
+import { test, expect, describe, beforeEach, afterEach } from 'vitest';
 import { appRouter } from '../src/routers/_app';
 import { createTRPCContext } from '../src/trpc';
 import { prisma } from '../src/lib/prisma';
@@ -7,26 +7,49 @@ import { caller, user1Caller, user2Caller } from './setup';
 describe('Class Router', () => {
   let testClass: any;
   let testClass2: any;
+  const createdClassIds: string[] = [];
 
   beforeEach(async () => {
-    // Create test classes for each test
+    // Create test classes for each test with unique names to avoid conflicts
+    const timestamp = Date.now();
     testClass = await user1Caller.class.create({
-      name: 'Test Class 1',
+      name: `Test Class 1-${timestamp}`,
       subject: 'Mathematics',
       section: '10th Grade',
     });
 
     testClass2 = await user2Caller.class.create({
-      name: 'Test Class 2',
+      name: `Test Class 2-${timestamp}`,
       subject: 'Science',
       section: '11th Grade',
     });
+
+    // Track created classes for cleanup
+    if (testClass?.id) createdClassIds.push(testClass.id);
+    if (testClass2?.id) createdClassIds.push(testClass2.id);
+  });
+
+  afterEach(async () => {
+    // Clean up created classes after each test
+    try {
+      if (createdClassIds.length > 0) {
+        await prisma.class.deleteMany({
+          where: {
+            id: { in: createdClassIds },
+          },
+        });
+        createdClassIds.length = 0; // Clear the array
+      }
+    } catch (error) {
+      // Ignore cleanup errors - classes might already be deleted
+    }
   });
 
   describe('create', () => {
     test('should create a class successfully', async () => {
       expect(testClass).toBeDefined();
-      expect(testClass.name).toBe('Test Class 1');
+      expect(testClass.id).toBeDefined();
+      expect(testClass.name).toContain('Test Class 1');
       expect(testClass.subject).toBe('Mathematics');
       expect(testClass.section).toBe('10th Grade');
     });
@@ -72,8 +95,9 @@ describe('Class Router', () => {
 
     test('should include user\'s own classes as teacher', async () => {
       const classes = await user1Caller.class.getAll();
-      const userClass = classes.teacherInClass.find((c: any) => c.name === 'Test Class 1');
+      const userClass = classes.teacherInClass.find((c: any) => c.id === testClass.id);
       expect(userClass).toBeDefined();
+      expect(userClass?.id).toBe(testClass.id);
     });
 
     test('should fail to get classes without authentication', async () => {
@@ -152,6 +176,12 @@ describe('Class Router', () => {
       expect(result).toBeDefined();
       expect(result.deletedClass).toBeDefined();
       expect(result.deletedClass.id).toBe(testClass.id);
+      
+      // Remove from cleanup list since it's already deleted
+      const index = createdClassIds.indexOf(testClass.id);
+      if (index > -1) {
+        createdClassIds.splice(index, 1);
+      }
     });
 
     test('should fail to delete class user is not teacher of', async () => {
@@ -212,10 +242,12 @@ describe('Class Router', () => {
     test('should remove member successfully', async () => {
       // First add a student
       const user2Profile = await user2Caller.user.getProfile();
-      await user1Caller.class.addStudent({
+      const addResult = await user1Caller.class.addStudent({
         classId: testClass.id,
         studentId: user2Profile.id,
       });
+      expect(addResult).toBeDefined();
+      expect(addResult.newStudent).toBeDefined();
       
       // Then remove them
       const result = await user1Caller.class.removeMember({
@@ -240,12 +272,20 @@ describe('Class Router', () => {
     test('should join class with class code successfully', async () => {
       // First create an invite code
       const inviteCode = await user1Caller.class.createInviteCode({ classId: testClass.id });
+      expect(inviteCode).toBeDefined();
+      expect(inviteCode.code).toBeDefined();
       
       // Then join with the code
       const result = await user2Caller.class.join({ classCode: inviteCode.code });
       expect(result).toBeDefined();
       expect(result.joinedClass).toBeDefined();
       expect(result.joinedClass.id).toBe(testClass.id);
+      
+      // Clean up: remove student from class
+      await user1Caller.class.removeMember({
+        classId: testClass.id,
+        userId: (await user2Caller.user.getProfile()).id,
+      });
     });
 
     test('should fail to join with invalid class code', async () => {

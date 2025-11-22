@@ -1,6 +1,7 @@
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import type { Request, Response } from 'express';
+import { TRPCError } from '@trpc/server';
 
 const isDevelopment = process.env.NODE_ENV === 'development';
 
@@ -11,7 +12,7 @@ const rateLimitHandler = (req: Request, res: Response) => {
   // Return JSON structure that can be intercepted on frontend with:
   // error.data?.code === 'TOO_MANY_REQUESTS' || error.data?.httpStatus === 429
   // When tRPC wraps this, the response body becomes error.data, so we put code/httpStatus at top level
-  res.status(429).json({
+  throw new TRPCError({
     code: 'TOO_MANY_REQUESTS',
     message: 'Too many requests, please try again later.',
   });

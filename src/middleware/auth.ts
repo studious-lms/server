@@ -50,7 +50,6 @@ export const createAuthMiddleware = (t: any) => {
         },
       });
     } catch (error) {
-      console.log(error)
       throw new TRPCError({
         code: 'UNAUTHORIZED',
         message: 'Invalid user data',

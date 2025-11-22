@@ -354,7 +354,7 @@ export const assignmentRouter = createTRPCRouter({
       return updated;
     }),
 
-  create: protectedProcedure
+  create: protectedTeacherProcedure
     .input(createAssignmentSchema)
     .mutation(async ({ ctx, input }) => {
       const { classId, title, instructions, dueDate, files, existingFileIds, aiPolicyLevel, acceptFiles, acceptExtendedResponse, acceptWorksheet, worksheetIds, gradeWithAI, studentIds, maxGrade, graded, weight, sectionId, type, markSchemeId, gradingBoundaryId, inProgress } = input;
@@ -400,8 +400,6 @@ export const assignmentRouter = createTRPCRouter({
           return acc + maxPoints;
         }, 0);
       }
-
-      console.log(studentIds);
 
       // Prepare submission data outside transaction
       const submissionData = studentIds && studentIds.length > 0 
@@ -595,7 +593,7 @@ export const assignmentRouter = createTRPCRouter({
 
       return assignment;
     }),
-  update: protectedProcedure
+  update: protectedTeacherProcedure
     .input(updateAssignmentSchema)
     .mutation(async ({ ctx, input }) => {
       const { id, title, instructions, dueDate, files, existingFileIds, worksheetIds, aiPolicyLevel, maxGrade, graded, weight, sectionId, type, inProgress, acceptFiles, acceptExtendedResponse, acceptWorksheet, gradeWithAI, studentIds } = input;
@@ -929,7 +927,7 @@ export const assignmentRouter = createTRPCRouter({
       };
     }),
 
-  get: protectedProcedure
+  get: protectedClassMemberProcedure
     .input(getAssignmentSchema)
     .query(async ({ ctx, input }) => {
       const { id, classId } = input;

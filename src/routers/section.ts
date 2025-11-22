@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure } from "../trpc.js";
+import { createTRPCRouter, protectedProcedure, protectedTeacherProcedure } from "../trpc.js";
 import { TRPCError } from "@trpc/server";
 import { prisma } from "../lib/prisma.js";
 
@@ -22,7 +22,7 @@ const deleteSectionSchema = z.object({
 });
 
 export const sectionRouter = createTRPCRouter({
-  create: protectedProcedure
+  create: protectedTeacherProcedure
     .input(createSectionSchema)
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user) {
@@ -97,7 +97,7 @@ export const sectionRouter = createTRPCRouter({
       return section;
     }),
 
-  reorder: protectedProcedure
+  reorder: protectedTeacherProcedure
     .input(z.object({
       classId: z.string(),
       movedId: z.string(), // Section ID
@@ -195,7 +195,7 @@ export const sectionRouter = createTRPCRouter({
       return result;
     }),
 
-  update: protectedProcedure
+  update: protectedTeacherProcedure
     .input(updateSectionSchema)
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user) {
@@ -237,7 +237,7 @@ export const sectionRouter = createTRPCRouter({
       return section;
     }),
 
-  reOrder: protectedProcedure
+  reOrder: protectedTeacherProcedure
     .input(z.object({
       id: z.string(),
       classId: z.string(),
@@ -308,7 +308,7 @@ export const sectionRouter = createTRPCRouter({
       return { id: input.id };
     }),
 
-  delete: protectedProcedure
+  delete: protectedTeacherProcedure
     .input(deleteSectionSchema)
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user) {

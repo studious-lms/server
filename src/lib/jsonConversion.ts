@@ -4,12 +4,13 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { writeFile } from 'fs'
 import { DocumentBlock, FormatTypes, Fonts } from './jsonStyles.js'
+import { logger } from 'src/utils/logger.js'
 
 export async function createPdf(blocks: DocumentBlock[]) {
-    console.log('createPdf: Starting PDF creation with', blocks.length, 'blocks');
+    logger.info(`createPdf: Starting PDF creation with ${blocks.length} blocks`);
     try {
         const pdfDoc = await PDFDocument.create()
-        console.log('createPdf: PDFDocument created successfully');
+        logger.info('createPdf: PDFDocument created successfully');
         
         // Register fontkit to enable custom font embedding
         pdfDoc.registerFontkit(fontkit)
@@ -33,9 +34,9 @@ export async function createPdf(blocks: DocumentBlock[]) {
             notoSansItalic = await pdfDoc.embedFont(italicFontBytes)
             courierFont = await pdfDoc.embedFont(StandardFonts.Courier) // Keep Courier for code blocks
             
-            console.log('createPdf: Unicode fonts loaded successfully');
+            logger.info('createPdf: Unicode fonts loaded successfully');
         } catch (fontError) {
-            console.warn('createPdf: Failed to load custom fonts, falling back to standard fonts:', fontError);
+            logger.warn(`createPdf: Failed to load custom fonts, falling back to standard fonts: ${fontError}`);
             // Fallback to standard fonts if custom fonts fail
             notoSansRegular = await pdfDoc.embedFont(StandardFonts.Helvetica)
             notoSansBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
@@ -342,10 +343,10 @@ export async function createPdf(blocks: DocumentBlock[]) {
 
     let y = height - marginTop
     let lastLineHeight = -1
-    console.log('createPdf: Starting to process', blocks.length, 'blocks');
+    logger.info(`createPdf: Starting to process ${blocks.length} blocks`);
     for (let i = 0; i < blocks.length; i++) {
         const block = blocks[i];
-        console.log(`createPdf: Processing block ${i + 1}/${blocks.length}, format: ${block.format}, content type: ${typeof block.content}`);
+        logger.info(`createPdf: Processing block ${i + 1}/${blocks.length}, format: ${block.format}, content type: ${typeof block.content}`);
         try {
         const preset = STYLE_PRESETS[block.format] || { fontSize: defaultFontSize, lineHeight: defaultLineHeight }
 
@@ -725,24 +726,21 @@ export async function createPdf(blocks: DocumentBlock[]) {
                 }
             }
         }
-        console.log(`createPdf: Successfully processed block ${i + 1}`);
+        logger.info(`createPdf: Successfully processed block ${i + 1}`);
         y -= paragraphSpacing
         lastLineHeight = lineHeight
         } catch (blockError) {
-            console.error(`createPdf: Error processing block ${i + 1}:`, blockError);
+            logger.error(`createPdf: Error processing block ${i + 1}: ${blockError}`);
             throw blockError;
         }
     }
 
-        console.log('createPdf: About to save PDF document');
+        logger.info('createPdf: About to save PDF document');
         const pdfBytes = await pdfDoc.save()
-        console.log('createPdf: PDF saved successfully, bytes length:', pdfBytes.length);
-        // writeFile('output.pdf', pdfBytes, () => {
-        //     console.log('PDF created successfully') // Still only saves file, no API yet
-        // })
+        logger.info(`createPdf: PDF saved successfully, bytes length: ${pdfBytes.length}`);
         return pdfBytes
     } catch (error) {
-        console.error('createPdf: Error during PDF creation:', error);
+        logger.error(`createPdf: Error during PDF creation: ${error}`);
         throw error;
     }
 }

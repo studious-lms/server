@@ -7,6 +7,7 @@ import { compare, hash } from "bcryptjs";
 import { transport } from "../utils/email.js";
 import { prismaWrapper } from "../utils/prismaWrapper.js";
 import { env } from "../lib/config/env.js";
+import { logger } from "../utils/logger.js";
 
 const loginSchema = z.object({
   username: z.string(),
@@ -114,7 +115,7 @@ export const authRouter = createTRPCRouter({
       //   text: `Click the link to verify your email: ${env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`,
       // });
 
-      console.log(`${env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`)
+      logger.info(`${env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`)
 
       return {
         user: {

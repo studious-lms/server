@@ -206,9 +206,10 @@ export const announcementRouter = createTRPCRouter({
             };
         }),
 
-    update: protectedProcedure
+    update: protectedTeacherProcedure
         .input(z.object({
             id: z.string(),
+            classId: z.string(),
             data: z.object({
                 remarks: z.string().min(1, "Remarks cannot be empty").optional(),
                 files: z.array(directFileSchema).optional(),
@@ -339,9 +340,10 @@ export const announcementRouter = createTRPCRouter({
             };
         }),
 
-    delete: protectedProcedure
+    delete: protectedTeacherProcedure
         .input(z.object({
             id: z.string(),
+            classId: z.string(),
         }))
         .mutation(async ({ ctx, input }) => {
             if (!ctx.user) {

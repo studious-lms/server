@@ -902,7 +902,6 @@ WHEN CREATING COURSE MATERIALS (docs field):
       if (jsonData.docs && Array.isArray(jsonData.docs)) {
         
 
-        console.log('Generating PDFs', { labChatId, docs: JSON.stringify(jsonData.docs, null, 2) });
         for (let i = 0; i < jsonData.docs.length; i++) {
           const doc = jsonData.docs[i];
           if (!doc.title || !doc.blocks || !Array.isArray(doc.blocks)) {

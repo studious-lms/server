@@ -1,7 +1,22 @@
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import type { Request, Response } from 'express';
 
 const isDevelopment = process.env.NODE_ENV === 'development';
+
+// Custom handler for rate limit errors that returns JSON
+// This format can be intercepted on the frontend with:
+// error.data?.code === 'TOO_MANY_REQUESTS' || error.data?.httpStatus === 429
+const rateLimitHandler = (req: Request, res: Response) => {
+  // Return JSON structure that can be intercepted on frontend with:
+  // error.data?.code === 'TOO_MANY_REQUESTS' || error.data?.httpStatus === 429
+  // When tRPC wraps this, the response body becomes error.data, so we put code/httpStatus at top level
+  res.status(429).json({
+    code: 'TOO_MANY_REQUESTS',
+    httpStatus: 429,
+    message: 'Too many requests, please try again later.',
+  });
+};
 
 // General API rate limiter - applies to all routes
 export const generalLimiter = rateLimit({
@@ -10,6 +25,7 @@ export const generalLimiter = rateLimit({
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  handler: rateLimitHandler,
   skip: (req) => {
     // Skip rate limiting for health checks
     return req.path === '/health';
@@ -24,6 +40,7 @@ export const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true, // Don't count successful requests
+  handler: rateLimitHandler,
 });
 
 // File upload rate limiter
@@ -33,6 +50,7 @@ export const uploadLimiter = rateLimit({
   message: 'Too many file uploads, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  handler: rateLimitHandler,
 });
 
 // Helmet configuration

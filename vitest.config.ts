@@ -18,6 +18,18 @@ export default defineConfig({
     sequence: {
       concurrent: false,
     },
+    coverage: {
+      exclude: [
+        "generated/**",
+        "prisma/**",
+        "scripts/**",
+        "src/lib/prisma.ts",
+        "src/seedDatabase.ts",
+        "src/socket/**",
+        "**/node_modules/**",
+        "**/dist/**",
+      ],
+    },
     env: {
       NODE_ENV: 'test',
     },

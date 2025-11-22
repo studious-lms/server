@@ -26,7 +26,7 @@ const getCaller = async (token: string) => {
 // Before the entire test suite runs
 beforeAll(async () => {
   try {
-    console.log('DATABASE_URL: ' + process.env.DATABASE_URL);
+    logger.info('DATABASE_URL: ' + process.env.DATABASE_URL);
     await clearDatabase();
     logger.info('Database cleared for tests');
 

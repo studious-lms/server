@@ -33,7 +33,7 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(generalLimiter);
+// app.use(generalLimiter);
 
 const allowedOrigins = env.NODE_ENV === 'production'
 ? [
@@ -382,17 +382,17 @@ app.get('/api/files/:fileId', async (req, res) => {
   }
 });
 
-app.use('/trpc/auth.login', authLimiter);
-app.use('/trpc/auth.register', authLimiter);
+// app.use('/trpc/auth.login', authLimiter);
+// app.use('/trpc/auth.register', authLimiter);
 
-// File upload endpoint for secure file uploads (supports both POST and PUT)
-app.post('/api/upload/:filePath', uploadLimiter, async (req, res) => {
-  handleFileUpload(req, res);
-});
+// // File upload endpoint for secure file uploads (supports both POST and PUT)
+// app.post('/api/upload/:filePath', uploadLimiter, async (req, res) => {
+//   handleFileUpload(req, res);
+// });
 
-app.put('/api/upload/:filePath', uploadLimiter, async (req, res) => {
-  handleFileUpload(req, res);
-});
+// app.put('/api/upload/:filePath', uploadLimiter, async (req, res) => {
+//   handleFileUpload(req, res);
+// });
 
 function handleFileUpload(req: any, res: any) {
   try {

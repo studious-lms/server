@@ -88,19 +88,7 @@ const { isAuthed, isMemberInClass, isTeacherInClass } = createAuthMiddleware(t);
 
 // Base procedures
 export const createTRPCRouter = t.router;
-export const publicProcedure = t.procedure.use(loggingMiddleware).use(async (opts) => {
-  const unkey = new generalLimiter(opts.ctx.req);
- 
-  const ratelimit = await unkey.limit(opts.ctx.user.id);
-  if (!ratelimit.success) {
-    throw new TRPCError({
-      code: 'TOO_MANY_REQUESTS',
-      message: JSON.stringify(ratelimit),
-    });
-  }
- 
-  return opts.next();
-});
+export const publicProcedure = t.procedure.use(loggingMiddleware);
 
 
 // Protected procedures

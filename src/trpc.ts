@@ -7,6 +7,7 @@ import { createAuthMiddleware } from './middleware/auth.js';
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { handlePrismaError, PrismaErrorInfo } from './utils/prismaErrorHandler.js';
+import { generalLimiter } from './middleware/security.js';
 
 interface CreateContextOptions {
   req: Request;
@@ -87,7 +88,20 @@ const { isAuthed, isMemberInClass, isTeacherInClass } = createAuthMiddleware(t);
 
 // Base procedures
 export const createTRPCRouter = t.router;
-export const publicProcedure = t.procedure.use(loggingMiddleware);
+export const publicProcedure = t.procedure.use(loggingMiddleware).use(async (opts) => {
+  const unkey = new generalLimiter(opts.ctx.req);
+ 
+  const ratelimit = await unkey.limit(opts.ctx.user.id);
+  if (!ratelimit.success) {
+    throw new TRPCError({
+      code: 'TOO_MANY_REQUESTS',
+      message: JSON.stringify(ratelimit),
+    });
+  }
+ 
+  return opts.next();
+});
+
 
 // Protected procedures
 export const protectedProcedure = publicProcedure.use(isAuthed);

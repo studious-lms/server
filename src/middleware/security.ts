@@ -13,7 +13,6 @@ const rateLimitHandler = (req: Request, res: Response) => {
   // When tRPC wraps this, the response body becomes error.data, so we put code/httpStatus at top level
   res.status(429).json({
     code: 'TOO_MANY_REQUESTS',
-    httpStatus: 429,
     message: 'Too many requests, please try again later.',
   });
 };

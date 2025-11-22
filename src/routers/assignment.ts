@@ -6,6 +6,7 @@ import { createDirectUploadFiles, type DirectUploadFile, confirmDirectUpload, up
 import { deleteFile } from "../lib/googleCloudStorage.js";
 import { sendNotifications } from "../lib/notificationHandler.js";
 import { logger } from "../utils/logger.js";
+import { gradeWorksheetPipeline } from "src/server/pipelines/gradeWorksheet.js";
 
 // DEPRECATED: This schema is no longer used - files are uploaded directly to GCS
 // Use directFileSchema instead
@@ -1285,6 +1286,21 @@ export const assignmentRouter = createTRPCRouter({
 
       if (submit !== undefined) {
         // Toggle submission status
+
+        if (submission.assignment.acceptWorksheet && submission.assignment.gradeWithAI) {
+
+          // Grade the submission with AI
+          const worksheetResponses = await prisma.studentWorksheetResponse.findMany({
+            where: {
+              submissionId: submission.id,
+            },
+          });
+
+          for (const worksheetResponse of worksheetResponses) {
+            // Run it in the background, non-blocking
+            gradeWorksheetPipeline(worksheetResponse.id);
+          }
+        }
         return await prisma.submission.update({
           where: { id: submission.id },
           data: {

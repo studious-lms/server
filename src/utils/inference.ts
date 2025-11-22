@@ -4,12 +4,17 @@ import { prisma } from '../lib/prisma.js';
 import { pusher } from '../lib/pusher.js';
 import { ensureAIUserExists, getAIUserId } from './aiUser.js';
 import { env } from '../lib/config/env.js';
+import { ZodSchema } from 'zod';
+import { zodTextFormat } from "openai/helpers/zod";
+
 
 
 export const inferenceClient = new OpenAI({
   apiKey: env.INFERENCE_API_KEY,
   baseURL: env.INFERENCE_API_BASE_URL,
 });
+
+export const openAIClient = new OpenAI();
 
 // Types for lab chat context
 export interface LabChatContext {
@@ -123,6 +128,45 @@ export async function sendAIMessage(
   };
 }
 
+export async function inference(
+  content: string,
+  format?: ZodSchema
+): Promise<string | object> {
+  try {
+
+    const completion = await openAIClient.responses.parse({
+      model: 'gpt-5-nano',
+      input: [
+        {
+          role: 'user',
+          content: content,
+        },
+      ],
+      ...(format ? { text: {
+          format: zodTextFormat(format, "newton_response_format"),
+        },
+      } : {}),
+    });
+
+
+    if (!completion) {
+      throw new Error('No response generated from inference API');
+    }
+
+    // if (format) {
+    //   if (typeof completion.output === 'string') {
+    //     return JSON.parse(completion.output);
+    //   }
+    //   return JSON.parse(completion.output);
+    // }
+
+    return completion.output_parsed;
+  } catch (error) {
+    logger.error('Failed to generate inference response', { error });
+    throw error;
+  }
+}
+
 /**
  * Simple inference function for general use
  */
@@ -134,10 +178,10 @@ export async function generateInferenceResponse(
     maxTokens?: number;
   } = {}
 ): Promise<InferenceResponse> {
-  const { model = 'command-r-plus', maxTokens = 500 } = options;
+  const { model = 'gpt-5-nano', maxTokens = 500 } = options;
 
   try {
-    const completion = await inferenceClient.chat.completions.create({
+    const completion = await openAIClient.chat.completions.create({
       model,
       messages: [
         {

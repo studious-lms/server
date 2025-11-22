@@ -48,10 +48,12 @@ enum UploadStatus {
 }
 
 enum GenerationStatus {
+  NOT_STARTED
   PENDING
   GENERATING
   COMPLETED
   FAILED
+  CANCELLED
 }
 
 enum WorksheetQuestionType {
@@ -465,7 +467,6 @@ model LabChat {
   createdById String // Teacher who created the lab
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  status GenerationStatus?
   
   class Class @relation("ClassLabChats", fields: [classId], references: [id], onDelete: Cascade)
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -493,7 +494,7 @@ model Message {
   senderId String
   conversationId String
   createdAt DateTime @default(now())
-  
+  status GenerationStatus? @default(NOT_STARTED)
   sender User @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   mentions Mention[]
@@ -571,6 +572,7 @@ model StudentQuestionProgress {
   updatedAt DateTime? @updatedAt
   studentWorksheetResponseId String?
   studentWorksheetResponse StudentWorksheetResponse? @relation(fields: [studentWorksheetResponseId], references: [id], onDelete: Cascade)
+  status GenerationStatus? @default(NOT_STARTED)
   
   @@index([studentId, questionId])
 }
@@ -596,7 +598,7 @@ model SchoolDevelopementProgram {
   submittedAt DateTime? @default(now())
   reviewedAt DateTime?
 
-  status String @default("PENDING") // PENDING, APPROVED, REJECTED, REFERRED
+  status String @default("NOT_STARTED") // NOT_STARTED, PENDING, APPROVED, REJECTED, REFERRED
 
   supportingDocumentation File[] @relation("SchoolDevelopementProgramSupportingDocumentation")
 }

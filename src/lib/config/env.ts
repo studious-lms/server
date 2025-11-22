@@ -48,6 +48,7 @@ const fullSchema = baseSchema.extend({
   PUSHER_CLUSTER: z.string().min(1, 'PUSHER_CLUSTER is required'),
   INFERENCE_API_KEY: z.string().optional(),
   INFERENCE_API_BASE_URL: z.string().url().optional(),
+  OPENAI_API_KEY: z.string().optional(),
   LOG_MODE: z.enum(['normal', 'verbose', 'quiet']).default('normal'),
 });
 
@@ -68,6 +69,7 @@ const testSchema = baseSchema.extend({
   PUSHER_SECRET: z.string().optional().default('test-secret'),
   PUSHER_CLUSTER: z.string().optional().default('us2'),
   INFERENCE_API_KEY: z.string().optional(),
+  OPENAI_API_KEY: z.string().optional(),
   INFERENCE_API_BASE_URL: z.string().url().optional(),
   LOG_MODE: z.enum(['normal', 'verbose', 'quiet']).default('quiet'),
 });

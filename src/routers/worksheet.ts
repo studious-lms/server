@@ -2,7 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "../trpc.js";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
-import { WorksheetQuestionType } from "@prisma/client";
+import { GenerationStatus, WorksheetQuestionType } from "@prisma/client";
 import { commentSelect } from "./comment.js";
 
 type MCQOptions = {
@@ -372,6 +372,7 @@ export const worksheetRouter = createTRPCRouter({
           data: { response, 
             ...(isMarkableByAlgo && { isCorrect: response === correctAnswer }),
             ...(isMarkableByAlgo && { points: response === correctAnswer ? marksAwardedIfCorrect : 0 }),
+            status: GenerationStatus.NOT_STARTED,
            },
         });
       } else {
@@ -398,52 +399,23 @@ export const worksheetRouter = createTRPCRouter({
 
       return updatedWorksheetResponse;
     }),
-    submitWorksheet: protectedProcedure
+  cancelAutoGrading: protectedProcedure
     .input(z.object({
       worksheetResponseId: z.string(),
+      questionId: z.string(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const { worksheetResponseId } = input;
+      const { worksheetResponseId, questionId } = input;
 
-      const worksheetResponse = await prisma.studentWorksheetResponse.findUnique({
-        where: { id: worksheetResponseId },
-        include: {
-          worksheet: {
-            include: {
-              questions: true,
-            },
-          },
-          responses: true,
-        },
-      });
-
-      if (!worksheetResponse) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Worksheet response not found' });
-      }
-
-      if (worksheetResponse.submitted) {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Worksheet already submitted' });
-      }
-
-      // Mark worksheet as submitted
-      const submittedWorksheet = await prisma.studentWorksheetResponse.update({
-        where: { id: worksheetResponseId },
+      const updatedQuestion = await prisma.studentQuestionProgress.update({
+        where: { id: questionId, studentWorksheetResponseId: worksheetResponseId },
         data: {
-          submitted: true,
-          submittedAt: new Date(),
-        },
-        include: {
-          responses: true,
+          status: GenerationStatus.CANCELLED,
         },
       });
 
-      // TODO: Implement AI grading here
-      // For now, we'll just mark all answers as pending review
-      // You could integrate with an AI service to auto-grade certain question types
-      
-      return submittedWorksheet;
+      return updatedQuestion;
     }),
-
   // Grade a student's answer
   gradeAnswer: protectedProcedure
     .input(z.object({

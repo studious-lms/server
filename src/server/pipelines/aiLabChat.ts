@@ -1,7 +1,7 @@
-import { getAIUserId } from "src/utils/aiUser";
+import { getAIUserId } from "../../utils/aiUser";
 import { prisma } from "../../lib/prisma.js";
 import { Assignment, Class, File, GenerationStatus, User } from "@prisma/client";
-import { inference } from "src/utils/inference.js";
+import { inference } from "../../utils/inference.js";
 import z from "zod";
 
 const aiLabChatResponseSchema = z.object({

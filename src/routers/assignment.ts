@@ -6,7 +6,7 @@ import { createDirectUploadFiles, type DirectUploadFile, confirmDirectUpload, up
 import { deleteFile } from "../lib/googleCloudStorage.js";
 import { sendNotifications } from "../lib/notificationHandler.js";
 import { logger } from "../utils/logger.js";
-import { gradeWorksheetPipeline } from "src/server/pipelines/gradeWorksheet.js";
+import { gradeWorksheetPipeline } from "../server/pipelines/gradeWorksheet.js";
 
 // DEPRECATED: This schema is no longer used - files are uploaded directly to GCS
 // Use directFileSchema instead

@@ -13,13 +13,13 @@ describe('Class Router', () => {
     // Create test classes for each test with unique names to avoid conflicts
     const timestamp = Date.now();
     testClass = await user1Caller.class.create({
-      name: `Test Class 1-${timestamp}`,
+      name: `Test Class 1`,
       subject: 'Mathematics',
       section: '10th Grade',
     });
 
     testClass2 = await user2Caller.class.create({
-      name: `Test Class 2-${timestamp}`,
+      name: `Test Class 2`,
       subject: 'Science',
       section: '11th Grade',
     });
@@ -27,22 +27,6 @@ describe('Class Router', () => {
     // Track created classes for cleanup
     if (testClass?.id) createdClassIds.push(testClass.id);
     if (testClass2?.id) createdClassIds.push(testClass2.id);
-  });
-
-  afterEach(async () => {
-    // Clean up created classes after each test
-    try {
-      if (createdClassIds.length > 0) {
-        await prisma.class.deleteMany({
-          where: {
-            id: { in: createdClassIds },
-          },
-        });
-        createdClassIds.length = 0; // Clear the array
-      }
-    } catch (error) {
-      // Ignore cleanup errors - classes might already be deleted
-    }
   });
 
   describe('create', () => {
@@ -75,10 +59,11 @@ describe('Class Router', () => {
     });
 
     test('should fail to create class with missing required fields', async () => {
+
+      // @ts-expect-error - test case
       await expect(user1Caller.class.create({
         name: '',
-        subject: 'Mathematics',
-        section: '10th Grade',
+        color: '#3B82F6',
       })).rejects.toThrow();
     });
   });

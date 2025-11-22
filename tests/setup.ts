@@ -26,6 +26,7 @@ const getCaller = async (token: string) => {
 // Before the entire test suite runs
 beforeAll(async () => {
   try {
+    console.log('DATABASE_URL: ' + process.env.DATABASE_URL);
     await clearDatabase();
     logger.info('Database cleared for tests');
 
@@ -47,6 +48,13 @@ beforeAll(async () => {
       confirmPassword: 'password_is_1234',
     });
 
+    const user3 = await caller.auth.register({
+      username: 'testuser3',
+      email: 'test3@test.com',
+      password: 'password_is_1234',
+      confirmPassword: 'password_is_1234',
+    });
+
     // Get sessions created during registration
     session1 = await prisma.session.findFirst({
       where: {
@@ -60,7 +68,13 @@ beforeAll(async () => {
       },
     }) as Session;
 
-    if (!session1 || !session2) {
+    session3 = await prisma.session.findFirst({ 
+      where: {
+        userId: user3.user.id,
+      },
+    }) as Session;
+
+    if (!session1 || !session2 || !session3) {
       throw new Error('Failed to create sessions for test users');
     }
 
@@ -71,6 +85,10 @@ beforeAll(async () => {
 
     verification2 = await caller.auth.verify({
       token: session2.id,
+    });
+
+    verification3 = await caller.auth.verify({
+      token: session3.id,
     });
 
     // Login to get fresh tokens
@@ -84,14 +102,19 @@ beforeAll(async () => {
       password: 'password_is_1234',
     });
 
-    if (!login1.token || !login2.token) {
+    login3 = await caller.auth.login({
+      username: 'testuser3',
+      password: 'password_is_1234',
+    });
+
+    if (!login1.token || !login2.token || !login3.token) {
       throw new Error('Failed to get login tokens');
     }
 
     // Create authenticated callers
     user1Caller = await getCaller(login1.token);
     user2Caller = await getCaller(login2.token);
-
+    user3Caller = await getCaller(login3.token);
     logger.info('Test setup completed successfully');
   } catch (error) {
     logger.error('Test setup failed', { error });
@@ -110,10 +133,14 @@ afterAll(async () => {
 
 export let user1Caller: ReturnType<typeof appRouter.createCaller>;
 export let user2Caller: ReturnType<typeof appRouter.createCaller>;
+export let user3Caller: ReturnType<typeof appRouter.createCaller>;
 export let caller: ReturnType<typeof appRouter.createCaller>;
 export let session1: Session;
 export let session2: Session;
+export let session3: Session;
 export let verification1: any;
 export let verification2: any;
+export let verification3: any;
 export let login1: any;
 export let login2: any;
+export let login3: any;

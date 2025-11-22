@@ -60,7 +60,7 @@ class Logger {
     // this.isDevelopment = process.env.NODE_ENV === 'development';
     this.isDevelopment = true;
 
-    this.mode = (process.env.LOG_MODE as LogMode) || 'normal';
+    this.mode = (process.env.NODE_ENV === 'test' ? 'minimal' : ((process.env.LOG_MODE as LogMode) || 'normal'));
     
 
     this.levelColors = {

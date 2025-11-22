@@ -883,10 +883,29 @@ export const seedDatabase = async () => {
         }
     }
 
-    // Create all submissions
-    await Promise.all(submissionsToCreate.map(submission => 
-        prisma.submission.create({ data: submission })
-    ));
+    // Create all submissions in batches to avoid connection pool exhaustion
+    const BATCH_SIZE = 15; // Create 15 at a time to avoid overwhelming Supabase connection pool
+    
+    logger.info(`Creating ${submissionsToCreate.length} submissions in batches of ${BATCH_SIZE}`);
+    
+    for (let i = 0; i < submissionsToCreate.length; i += BATCH_SIZE) {
+        const batch = submissionsToCreate.slice(i, i + BATCH_SIZE);
+        await Promise.all(batch.map(submission => 
+            prisma.submission.create({ data: submission })
+        ));
+        
+        // Small delay between batches to avoid overwhelming the connection pool
+        if (i + BATCH_SIZE < submissionsToCreate.length) {
+            await new Promise(resolve => setTimeout(resolve, 100)); // 100ms delay
+        }
+        
+        // Log progress every 30 submissions or at the end
+        if ((i + BATCH_SIZE) % 30 === 0 || i + BATCH_SIZE >= submissionsToCreate.length) {
+            logger.info(`Created ${Math.min(i + BATCH_SIZE, submissionsToCreate.length)}/${submissionsToCreate.length} submissions`);
+        }
+    }
+    
+    logger.info(`Successfully created all ${submissionsToCreate.length} submissions`);
 
     // 11. Create announcements
     await Promise.all([
@@ -923,290 +942,262 @@ export const seedDatabase = async () => {
     const oct10 = new Date('2025-10-10T08:00:00');
     const oct11 = new Date('2025-10-11T08:00:00');
     
-    await Promise.all([
+    // Build events array first, then batch create them
+    const eventsToCreate = [
         // Monday Oct 7 - Michael Chen's busy day
-        prisma.event.create({
-            data: {
-                name: 'AP Calculus BC - Period 2',
-                startTime: new Date('2025-10-07T09:15:00'),
-                endTime: new Date('2025-10-07T10:05:00'),
-                location: 'Room 156',
-                remarks: 'Derivatives unit test review',
-                userId: teachers[1].id,
-                classId: mathClass.id,
-                color: '#3B82F6',
-            }
-        }),
-        prisma.event.create({
-            data: {
-                name: 'Department Head Meeting',
-                startTime: new Date('2025-10-07T10:30:00'),
-                endTime: new Date('2025-10-07T11:30:00'),
-                location: 'Conference Room A',
-                remarks: 'Monthly math department meeting - curriculum planning',
-                userId: teachers[1].id,
-                color: '#8B5CF6',
-            }
-        }),
-        prisma.event.create({
-            data: {
-                name: 'AP Statistics - Period 5',
-                startTime: new Date('2025-10-07T13:45:00'),
-                endTime: new Date('2025-10-07T14:35:00'),
-                location: 'Room 156',
-                remarks: 'Hypothesis testing introduction',
-                userId: teachers[1].id,
-                color: '#3B82F6',
-            }
-        }),
-        prisma.event.create({
-            data: {
-                name: 'Parent Conference - Williams Family',
-                startTime: new Date('2025-10-07T15:00:00'),
-                endTime: new Date('2025-10-07T15:30:00'),
-                location: 'Room 156',
-                remarks: 'Discuss Sophia\'s progress in AP Calculus',
-                userId: teachers[1].id,
-                color: '#F59E0B',
-            }
-        }),
-        prisma.event.create({
-            data: {
-                name: 'Math Tutoring Session',
-                startTime: new Date('2025-10-07T15:45:00'),
-                endTime: new Date('2025-10-07T16:45:00'),
-                location: 'Room 156',
-                remarks: 'Extra help for struggling students',
-                userId: teachers[1].id,
-                color: '#10B981',
-            }
-        }),
+        {
+            name: 'AP Calculus BC - Period 2',
+            startTime: new Date('2025-10-07T09:15:00'),
+            endTime: new Date('2025-10-07T10:05:00'),
+            location: 'Room 156',
+            remarks: 'Derivatives unit test review',
+            userId: teachers[1].id,
+            classId: mathClass.id,
+            color: '#3B82F6',
+        },
+        {
+            name: 'Department Head Meeting',
+            startTime: new Date('2025-10-07T10:30:00'),
+            endTime: new Date('2025-10-07T11:30:00'),
+            location: 'Conference Room A',
+            remarks: 'Monthly math department meeting - curriculum planning',
+            userId: teachers[1].id,
+            color: '#8B5CF6',
+        },
+        {
+            name: 'AP Statistics - Period 5',
+            startTime: new Date('2025-10-07T13:45:00'),
+            endTime: new Date('2025-10-07T14:35:00'),
+            location: 'Room 156',
+            remarks: 'Hypothesis testing introduction',
+            userId: teachers[1].id,
+            color: '#3B82F6',
+        },
+        {
+            name: 'Parent Conference - Williams Family',
+            startTime: new Date('2025-10-07T15:00:00'),
+            endTime: new Date('2025-10-07T15:30:00'),
+            location: 'Room 156',
+            remarks: 'Discuss Sophia\'s progress in AP Calculus',
+            userId: teachers[1].id,
+            color: '#F59E0B',
+        },
+        {
+            name: 'Math Tutoring Session',
+            startTime: new Date('2025-10-07T15:45:00'),
+            endTime: new Date('2025-10-07T16:45:00'),
+            location: 'Room 156',
+            remarks: 'Extra help for struggling students',
+            userId: teachers[1].id,
+            color: '#10B981',
+        },
 
         // Tuesday Oct 8
-        prisma.event.create({
-            data: {
-                name: 'AP Calculus BC - Period 2',
-                startTime: new Date('2025-10-08T09:15:00'),
-                endTime: new Date('2025-10-08T10:05:00'),
-                location: 'Room 156',
-                remarks: 'Derivatives unit test',
-                userId: teachers[1].id,
-                classId: mathClass.id,
-                color: '#3B82F6',
-            }
-        }),
-        prisma.event.create({
-            data: {
-                name: 'Faculty Meeting',
-                startTime: new Date('2025-10-08T12:00:00'),
-                endTime: new Date('2025-10-08T13:00:00'),
-                location: 'Main Auditorium',
-                remarks: 'All-school faculty meeting',
-                userId: teachers[1].id,
-                color: '#6B7280',
-            }
-        }),
-        prisma.event.create({
-            data: {
-                name: 'AP Statistics - Period 5',
-                startTime: new Date('2025-10-08T13:45:00'),
-                endTime: new Date('2025-10-08T14:35:00'),
-                location: 'Room 156',
-                remarks: 'Hypothesis testing practice problems',
-                userId: teachers[1].id,
-                color: '#3B82F6',
-            }
-        }),
-        prisma.event.create({
-            data: {
-                name: 'Grade Level Team Meeting',
-                startTime: new Date('2025-10-08T15:00:00'),
-                endTime: new Date('2025-10-08T16:00:00'),
-                location: 'Room 201',
-                remarks: '11th grade team coordination',
-                userId: teachers[1].id,
-                color: '#8B5CF6',
-            }
-        }),
+        {
+            name: 'AP Calculus BC - Period 2',
+            startTime: new Date('2025-10-08T09:15:00'),
+            endTime: new Date('2025-10-08T10:05:00'),
+            location: 'Room 156',
+            remarks: 'Derivatives unit test',
+            userId: teachers[1].id,
+            classId: mathClass.id,
+            color: '#3B82F6',
+        },
+        {
+            name: 'Faculty Meeting',
+            startTime: new Date('2025-10-08T12:00:00'),
+            endTime: new Date('2025-10-08T13:00:00'),
+            location: 'Main Auditorium',
+            remarks: 'All-school faculty meeting',
+            userId: teachers[1].id,
+            color: '#6B7280',
+        },
+        {
+            name: 'AP Statistics - Period 5',
+            startTime: new Date('2025-10-08T13:45:00'),
+            endTime: new Date('2025-10-08T14:35:00'),
+            location: 'Room 156',
+            remarks: 'Hypothesis testing practice problems',
+            userId: teachers[1].id,
+            color: '#3B82F6',
+        },
+        {
+            name: 'Grade Level Team Meeting',
+            startTime: new Date('2025-10-08T15:00:00'),
+            endTime: new Date('2025-10-08T16:00:00'),
+            location: 'Room 201',
+            remarks: '11th grade team coordination',
+            userId: teachers[1].id,
+            color: '#8B5CF6',
+        },
 
         // Wednesday Oct 9
-        prisma.event.create({
-            data: {
-                name: 'AP Calculus BC - Period 2',
-                startTime: new Date('2025-10-09T09:15:00'),
-                endTime: new Date('2025-10-09T10:05:00'),
-                location: 'Room 156',
-                remarks: 'Integration introduction',
-                userId: teachers[1].id,
-                classId: mathClass.id,
-                color: '#3B82F6',
-            }
-        }),
-        prisma.event.create({
-            data: {
-                name: 'Professional Development',
-                startTime: new Date('2025-10-09T11:00:00'),
-                endTime: new Date('2025-10-09T12:30:00'),
-                location: 'Library Conference Room',
-                remarks: 'Technology in Mathematics Education workshop',
-                userId: teachers[1].id,
-                color: '#059669',
-            }
-        }),
-        prisma.event.create({
-            data: {
-                name: 'AP Statistics - Period 5',
-                startTime: new Date('2025-10-09T13:45:00'),
-                endTime: new Date('2025-10-09T14:35:00'),
-                location: 'Room 156',
-                remarks: 'Chi-square tests',
-                userId: teachers[1].id,
-                color: '#3B82F6',
-            }
-        }),
-        prisma.event.create({
-            data: {
-                name: 'Student Council Advisory',
-                startTime: new Date('2025-10-09T15:00:00'),
-                endTime: new Date('2025-10-09T16:00:00'),
-                location: 'Room 105',
-                remarks: 'Advisor meeting for student council',
-                userId: teachers[1].id,
-                color: '#DC2626',
-            }
-        }),
+        {
+            name: 'AP Calculus BC - Period 2',
+            startTime: new Date('2025-10-09T09:15:00'),
+            endTime: new Date('2025-10-09T10:05:00'),
+            location: 'Room 156',
+            remarks: 'Integration introduction',
+            userId: teachers[1].id,
+            classId: mathClass.id,
+            color: '#3B82F6',
+        },
+        {
+            name: 'Professional Development',
+            startTime: new Date('2025-10-09T11:00:00'),
+            endTime: new Date('2025-10-09T12:30:00'),
+            location: 'Library Conference Room',
+            remarks: 'Technology in Mathematics Education workshop',
+            userId: teachers[1].id,
+            color: '#059669',
+        },
+        {
+            name: 'AP Statistics - Period 5',
+            startTime: new Date('2025-10-09T13:45:00'),
+            endTime: new Date('2025-10-09T14:35:00'),
+            location: 'Room 156',
+            remarks: 'Chi-square tests',
+            userId: teachers[1].id,
+            color: '#3B82F6',
+        },
+        {
+            name: 'Student Council Advisory',
+            startTime: new Date('2025-10-09T15:00:00'),
+            endTime: new Date('2025-10-09T16:00:00'),
+            location: 'Room 105',
+            remarks: 'Advisor meeting for student council',
+            userId: teachers[1].id,
+            color: '#DC2626',
+        },
 
         // Thursday Oct 10
-        prisma.event.create({
-            data: {
-                name: 'AP Calculus BC - Period 2',
-                startTime: new Date('2025-10-10T09:15:00'),
-                endTime: new Date('2025-10-10T10:05:00'),
-                location: 'Room 156',
-                remarks: 'Integration by substitution',
-                userId: teachers[1].id,
-                classId: mathClass.id,
-                color: '#3B82F6',
-            }
-        }),
-        prisma.event.create({
-            data: {
-                name: 'Curriculum Committee',
-                startTime: new Date('2025-10-10T11:00:00'),
-                endTime: new Date('2025-10-10T12:00:00'),
-                location: 'Principal\'s Office',
-                remarks: 'Review new AP curriculum standards',
-                userId: teachers[1].id,
-                color: '#8B5CF6',
-            }
-        }),
-        prisma.event.create({
-            data: {
-                name: 'AP Statistics - Period 5',
-                startTime: new Date('2025-10-10T13:45:00'),
-                endTime: new Date('2025-10-10T14:35:00'),
-                location: 'Room 156',
-                remarks: 'ANOVA introduction',
-                userId: teachers[1].id,
-                color: '#3B82F6',
-            }
-        }),
-        prisma.event.create({
-            data: {
-                name: 'Parent Conference - Anderson Family',
-                startTime: new Date('2025-10-10T15:00:00'),
-                endTime: new Date('2025-10-10T15:30:00'),
-                location: 'Room 156',
-                remarks: 'Discuss Ethan\'s improvement strategies',
-                userId: teachers[1].id,
-                color: '#F59E0B',
-            }
-        }),
-        prisma.event.create({
-            data: {
-                name: 'Math Club Meeting',
-                startTime: new Date('2025-10-10T15:45:00'),
-                endTime: new Date('2025-10-10T16:45:00'),
-                location: 'Room 156',
-                remarks: 'Preparing for state math competition',
-                userId: teachers[1].id,
-                color: '#10B981',
-            }
-        }),
+        {
+            name: 'AP Calculus BC - Period 2',
+            startTime: new Date('2025-10-10T09:15:00'),
+            endTime: new Date('2025-10-10T10:05:00'),
+            location: 'Room 156',
+            remarks: 'Integration by substitution',
+            userId: teachers[1].id,
+            classId: mathClass.id,
+            color: '#3B82F6',
+        },
+        {
+            name: 'Curriculum Committee',
+            startTime: new Date('2025-10-10T11:00:00'),
+            endTime: new Date('2025-10-10T12:00:00'),
+            location: 'Principal\'s Office',
+            remarks: 'Review new AP curriculum standards',
+            userId: teachers[1].id,
+            color: '#8B5CF6',
+        },
+        {
+            name: 'AP Statistics - Period 5',
+            startTime: new Date('2025-10-10T13:45:00'),
+            endTime: new Date('2025-10-10T14:35:00'),
+            location: 'Room 156',
+            remarks: 'ANOVA introduction',
+            userId: teachers[1].id,
+            color: '#3B82F6',
+        },
+        {
+            name: 'Parent Conference - Anderson Family',
+            startTime: new Date('2025-10-10T15:00:00'),
+            endTime: new Date('2025-10-10T15:30:00'),
+            location: 'Room 156',
+            remarks: 'Discuss Ethan\'s improvement strategies',
+            userId: teachers[1].id,
+            color: '#F59E0B',
+        },
+        {
+            name: 'Math Club Meeting',
+            startTime: new Date('2025-10-10T15:45:00'),
+            endTime: new Date('2025-10-10T16:45:00'),
+            location: 'Room 156',
+            remarks: 'Preparing for state math competition',
+            userId: teachers[1].id,
+            color: '#10B981',
+        },
 
         // Friday Oct 11
-        prisma.event.create({
-            data: {
-                name: 'AP Calculus BC - Period 2',
-                startTime: new Date('2025-10-11T09:15:00'),
-                endTime: new Date('2025-10-11T10:05:00'),
-                location: 'Room 156',
-                remarks: 'Integration by parts',
-                userId: teachers[1].id,
-                classId: mathClass.id,
-                color: '#3B82F6',
-            }
-        }),
-        prisma.event.create({
-            data: {
-                name: 'IEP Meeting - Student Support',
-                startTime: new Date('2025-10-11T10:30:00'),
-                endTime: new Date('2025-10-11T11:30:00'),
-                location: 'Special Services Office',
-                remarks: 'Individualized Education Plan review',
-                userId: teachers[1].id,
-                color: '#F59E0B',
-            }
-        }),
-        prisma.event.create({
-            data: {
-                name: 'AP Statistics - Period 5',
-                startTime: new Date('2025-10-11T13:45:00'),
-                endTime: new Date('2025-10-11T14:35:00'),
-                location: 'Room 156',
-                remarks: 'ANOVA practice and review',
-                userId: teachers[1].id,
-                color: '#3B82F6',
-            }
-        }),
-        prisma.event.create({
-            data: {
-                name: 'Weekend Prep Session',
-                startTime: new Date('2025-10-11T15:00:00'),
-                endTime: new Date('2025-10-11T17:00:00'),
-                location: 'Room 156',
-                remarks: 'Voluntary AP exam prep session',
-                userId: teachers[1].id,
-                color: '#059669',
-            }
-        }),
+        {
+            name: 'AP Calculus BC - Period 2',
+            startTime: new Date('2025-10-11T09:15:00'),
+            endTime: new Date('2025-10-11T10:05:00'),
+            location: 'Room 156',
+            remarks: 'Integration by parts',
+            userId: teachers[1].id,
+            classId: mathClass.id,
+            color: '#3B82F6',
+        },
+        {
+            name: 'IEP Meeting - Student Support',
+            startTime: new Date('2025-10-11T10:30:00'),
+            endTime: new Date('2025-10-11T11:30:00'),
+            location: 'Special Services Office',
+            remarks: 'Individualized Education Plan review',
+            userId: teachers[1].id,
+            color: '#F59E0B',
+        },
+        {
+            name: 'AP Statistics - Period 5',
+            startTime: new Date('2025-10-11T13:45:00'),
+            endTime: new Date('2025-10-11T14:35:00'),
+            location: 'Room 156',
+            remarks: 'ANOVA practice and review',
+            userId: teachers[1].id,
+            color: '#3B82F6',
+        },
+        {
+            name: 'Weekend Prep Session',
+            startTime: new Date('2025-10-11T15:00:00'),
+            endTime: new Date('2025-10-11T17:00:00'),
+            location: 'Room 156',
+            remarks: 'Voluntary AP exam prep session',
+            userId: teachers[1].id,
+            color: '#059669',
+        },
 
         // Some events for other teachers too
-        prisma.event.create({
-            data: {
-                name: 'Cell Biology Lab',
-                startTime: new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000),
-                endTime: new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000 + 90 * 60 * 1000), // 90 minutes
-                location: 'Science Lab Room 204',
-                remarks: 'Bring lab notebooks and safety goggles',
-                userId: teachers[0].id,
-                classId: biologyClass.id,
-                color: '#10B981',
-            }
-        }),
-        prisma.event.create({
-            data: {
-                name: 'Poetry Reading',
-                startTime: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
-                endTime: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000),
-                location: 'Library',
-                remarks: 'Students will present their original poetry',
-                userId: teachers[2].id,
-                classId: englishClass.id,
-                color: '#8B5CF6',
-            }
-        }),
-    ]);
+        {
+            name: 'Cell Biology Lab',
+            startTime: new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000),
+            endTime: new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000 + 90 * 60 * 1000), // 90 minutes
+            location: 'Science Lab Room 204',
+            remarks: 'Bring lab notebooks and safety goggles',
+            userId: teachers[0].id,
+            classId: biologyClass.id,
+            color: '#10B981',
+        },
+        {
+            name: 'Poetry Reading',
+            startTime: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
+            endTime: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000),
+            location: 'Library',
+            remarks: 'Students will present their original poetry',
+            userId: teachers[2].id,
+            classId: englishClass.id,
+            color: '#8B5CF6',
+        },
+    ];
+
+    // Create events in batches to avoid connection pool exhaustion
+    const EVENT_BATCH_SIZE = 10;
+    
+    logger.info(`Creating ${eventsToCreate.length} events in batches of ${EVENT_BATCH_SIZE}`);
+    
+    for (let i = 0; i < eventsToCreate.length; i += EVENT_BATCH_SIZE) {
+        const batch = eventsToCreate.slice(i, i + EVENT_BATCH_SIZE);
+        await Promise.all(batch.map(event => 
+            prisma.event.create({ data: event })
+        ));
+        
+        // Small delay between batches
+        if (i + EVENT_BATCH_SIZE < eventsToCreate.length) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+    }
+    
+    logger.info(`Successfully created all ${eventsToCreate.length} events`);
 
     // 13. Create attendance records
     const attendanceDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -1511,10 +1502,19 @@ export const seedDatabase = async () => {
         },
     ];
 
-    // Create all messages
-    await Promise.all(chatMessages.map(message => 
-        prisma.message.create({ data: message })
-    ));
+    // Create all messages in batches to avoid connection pool exhaustion
+    const MESSAGE_BATCH_SIZE = 10;
+    
+    logger.info(`Creating ${chatMessages.length} chat messages in batches of ${MESSAGE_BATCH_SIZE}`);
+    
+    for (let i = 0; i < chatMessages.length; i += MESSAGE_BATCH_SIZE) {
+        const batch = chatMessages.slice(i, i + MESSAGE_BATCH_SIZE);
+        await Promise.all(batch.map(message => 
+            prisma.message.create({ data: message })
+        ));
+    }
+    
+    logger.info(`Successfully created all ${chatMessages.length} chat messages`);
 
     // 16. Create file structure for classes
     await Promise.all([
@@ -1573,8 +1573,15 @@ export const seedDatabase = async () => {
     logger.info('  Student: alex.martinez@student.riverside.edu / student123');
 };
 
-(async () => {
+// Only run seedDatabase when executed directly (npm run seed)
+// Not when imported by other modules
+const isSeedScript = process.argv[1]?.includes('seedDatabase') || 
+                     process.argv.includes('seed');
+
+if (isSeedScript) {
+  (async () => {
     logger.info('Seeding database');
     await seedDatabase();
     logger.info('Database seeded');
-})();
+  })();
+}

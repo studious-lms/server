@@ -1,6 +1,8 @@
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 
+const isDevelopment = process.env.NODE_ENV === 'development';
+
 // General API rate limiter - applies to all routes
 export const generalLimiter = rateLimit({
   windowMs: 10 * 60 * 1000, // 10 minutes
@@ -39,7 +41,11 @@ export const helmetConfig = helmet({
     directives: {
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"], // Allow inline styles for tRPC panel
-      scriptSrc: ["'self'"],
+      // Allow inline scripts only in development (for tRPC panel)
+      // In production, keep strict CSP without unsafe-inline
+      scriptSrc: isDevelopment 
+        ? ["'self'", "'unsafe-inline'"] 
+        : ["'self'"],
       imgSrc: ["'self'", "data:", "https:"], // Allow images from any HTTPS source
       connectSrc: ["'self'", "https://*.sentry.io"], // Allow Sentry connections
       fontSrc: ["'self'", "data:"],

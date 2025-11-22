@@ -2,7 +2,7 @@ import { test, expect, describe } from 'vitest';
 import { appRouter } from '../src/routers/_app';
 import { createTRPCContext } from '../src/trpc';
 import { prisma } from '../src/lib/prisma';
-import { caller, login1, login2, session1, session2, user1Caller, user2Caller, verification1, verification2 } from './setup';
+import { caller, login1, login2, login3, session1, session2, session3, user1Caller, user2Caller, user3Caller, verification1, verification2, verification3 } from './setup';
 
 describe('Auth Router', () => {
   test('registration creates sessions', async () => {
@@ -28,15 +28,15 @@ describe('Auth Router', () => {
 
   test('logout invalidates session', async () => {
     // Use user2Caller for logout test to avoid breaking user1Caller for other tests
-    const logout = await user2Caller.auth.logout();
+    const logout = await user3Caller.auth.logout();
     expect(logout).toBeDefined();
     expect(logout.success).toBe(true);
     
     // Verify session is invalidated by trying to use it
     const invalidCaller = await createTRPCContext({
       req: { headers: {
-        authorization: `Bearer ${login2.token}`,
-        'x-user': login2.token,
+        authorization: `Bearer ${login3.token}`,
+        'x-user': login3.token,
       } } as any,
       res: {} as any,
     });

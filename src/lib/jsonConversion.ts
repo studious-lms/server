@@ -4,7 +4,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { writeFile } from 'fs'
 import { DocumentBlock, FormatTypes, Fonts } from './jsonStyles.js'
-import { logger } from 'src/utils/logger.js'
+import { logger } from '../utils/logger.js'
 
 export async function createPdf(blocks: DocumentBlock[]) {
     logger.info(`createPdf: Starting PDF creation with ${blocks.length} blocks`);

@@ -24,7 +24,7 @@ export const transport = nodemailer.createTransport({
 
 export const sendMail = async ({ from, to, subject, text }: sendMailProps) => {
   // Wrapper function for sending emails
-  if (process.env.EMAIL_DRY_RUN === 'true') {
+  if (env.EMAIL_DRY_RUN == "true") {
     logger.info(`Email dry run enabled. Would have sent email to ${to} from ${from} with subject ${subject} and text ${text}`);
     return;
   }

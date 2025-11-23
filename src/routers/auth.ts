@@ -113,13 +113,13 @@ export const authRouter = createTRPCRouter({
         from: 'noreply@studious.sh',
         to: user.email,
         subject: 'Verify your email',
-          text: `Click the link to verify your email: ${process.env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`,
+          text: `Click the link to verify your email: ${env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`,
         });
       } catch (err) {
         logger.error('Failed to send verification email', { email: user.email, err });
       }
 
-      logger.info(`Password verification email sent to ${user.email} at ${process.env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`);
+      // logger.info(`Password verification email sent to ${user.email} at ${env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`);
 
       return {
         user: {
@@ -291,13 +291,13 @@ export const authRouter = createTRPCRouter({
           from: 'noreply@studious.sh',
           to: user.email,
             subject: 'Verify your email',
-            text: `Click the link to verify your email: ${process.env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`,
+            text: `Click the link to verify your email: ${env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`,
           });
         } catch (err) {
           logger.error('Failed to send verification email', { email: user.email, err });
         }
 
-        logger.info(`Password verification email sent to ${user.email} at ${process.env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`);
+        // logger.info(`Password verification email sent to ${user.email} at ${env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`);
 
         return { success: true };
       }),
@@ -390,13 +390,13 @@ export const authRouter = createTRPCRouter({
             from: 'noreply@studious.sh',
             to: user.email,
             subject: 'Reset your password',
-            text: `Click the link to reset your password: ${process.env.NEXT_PUBLIC_APP_URL}/reset-password/${resetToken.id}`,
+            text: `Click the link to reset your password: ${env.NEXT_PUBLIC_APP_URL}/reset-password/${resetToken.id}`,
           });
         } catch (err) {
           logger.error('Failed to send password reset email', { email: user.email, err });
         }
 
-        logger.info(`Password reset email sent to ${user.email} at ${process.env.NEXT_PUBLIC_APP_URL}/reset-password/${resetToken.id}`);
+        // logger.info(`Password reset email sent to ${user.email} at ${env.NEXT_PUBLIC_APP_URL}/reset-password/${resetToken.id}`);
 
         return { success: true };
       }),

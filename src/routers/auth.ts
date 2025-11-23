@@ -4,7 +4,7 @@ import { TRPCError } from "@trpc/server";
 import { prisma } from "../lib/prisma.js";
 import { v4 as uuidv4 } from 'uuid';
 import { compare, hash } from "bcryptjs";
-import { transport } from "../utils/email.js";
+import { sendMail } from "../utils/email.js";
 import { prismaWrapper } from "../utils/prismaWrapper.js";
 import { env } from "../lib/config/env.js";
 import { logger } from "../utils/logger.js";
@@ -50,6 +50,7 @@ export const authRouter = createTRPCRouter({
       );
 
       if (existingUser && existingUser.verified) {
+        console.log(existingUser);
         if (existingUser.username === username) {
           throw new TRPCError({
             code: "CONFLICT",
@@ -108,14 +109,14 @@ export const authRouter = createTRPCRouter({
         'creating verification token'
       );
 
-      // await transport.sendMail({
-      //   from: 'noreply@studious.sh',
-      //   to: user.email,
-      //   subject: 'Verify your email',
-      //   text: `Click the link to verify your email: ${env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`,
-      // });
+      await sendMail({
+        from: 'noreply@studious.sh',
+        to: user.email,
+        subject: 'Verify your email',
+        text: `Click the link to verify your email: ${process.env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`,
+      });
 
-      logger.info(`${env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`)
+      // console.log(`Password verification email sent to ${user.email} at ${process.env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`)
 
       return {
         user: {
@@ -282,12 +283,14 @@ export const authRouter = createTRPCRouter({
           },
         });
         
-        // await transport.sendMail({
-        //   from: 'noreply@studious.sh',
-        //   to: user.email,
-        //   subject: 'Verify your email',
-        //   text: `Click the link to verify your email: ${env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`,
-        // });
+        await sendMail({
+          from: 'noreply@studious.sh',
+          to: user.email,
+          subject: 'Verify your email',
+          text: `Click the link to verify your email: ${process.env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`,
+        });
+
+        // console.log(`Password verification email sent to ${user.email} at ${process.env.NEXT_PUBLIC_APP_URL}/verify/${verificationToken.id}`);
 
         return { success: true };
       }),
@@ -324,6 +327,119 @@ export const authRouter = createTRPCRouter({
         });
 
         // Clean up the verification token
+        await prisma.session.delete({
+          where: { id: token },
+        });
+
+        return { success: true };
+      }),
+
+    requestPasswordReset: publicProcedure
+      .input(z.object({
+        email: z.string().email(),
+      }))
+      .mutation(async ({ input }) => {
+        const { email } = input;
+
+        const user = await prisma.user.findFirst({
+          where: { email },
+          select: {
+            id: true,
+            email: true,
+            username: true,
+          },
+        });
+
+        // Don't reveal if user exists or not for security
+        if (!user) {
+          return { success: true };
+        }
+
+        // Delete any existing password reset tokens for this user
+        // Only delete tokens that expire within 2 hours (likely password reset tokens)
+        const twoHoursFromNow = new Date(Date.now() + 1000 * 60 * 60 * 2);
+        await prisma.session.deleteMany({
+          where: { 
+            userId: user.id,
+            classId: null,
+            expiresAt: {
+              lte: twoHoursFromNow, // Only delete short-lived tokens (password reset tokens)
+            },
+          },
+        });
+
+        // Create a new password reset token (expires in 1 hour)
+        const resetToken = await prisma.session.create({
+          data: {
+            id: uuidv4(),
+            userId: user.id,
+            expiresAt: new Date(Date.now() + 1000 * 60 * 60), // 1 hour
+          },
+        });
+
+        // Send password reset email
+        await sendMail({
+          from: 'noreply@studious.sh',
+          to: user.email,
+          subject: 'Reset your password',
+          text: `Click the link to reset your password: ${process.env.NEXT_PUBLIC_APP_URL}/reset-password/${resetToken.id}`,
+        });
+
+        // console.log(`Password reset email sent to ${user.email} at ${process.env.NEXT_PUBLIC_APP_URL}/reset-password/${resetToken.id}`);
+
+        return { success: true };
+      }),
+
+    resetPassword: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        password: z.string().min(6, "Password must be at least 6 characters"),
+        confirmPassword: z.string(),
+      }).refine((data) => data.password === data.confirmPassword, {
+        message: "Passwords don't match",
+        path: ["confirmPassword"],
+      }))
+      .mutation(async ({ input }) => {
+        const { token, password } = input;
+
+        const session = await prisma.session.findUnique({
+          where: { id: token },
+          include: {
+            user: {
+              select: {
+                id: true,
+              },
+            },
+          },
+        });
+
+        if (!session || !session.userId) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Invalid or expired reset token",
+          });
+        }
+
+        if (session.expiresAt && session.expiresAt < new Date()) {
+          // Clean up expired token
+          await prisma.session.delete({
+            where: { id: token },
+          });
+          throw new TRPCError({
+            code: "UNAUTHORIZED",
+            message: "Reset token has expired",
+          });
+        }
+
+        // Update the user's password
+        await prisma.user.update({
+          where: { id: session.userId },
+          data: {
+            password: await hash(password, 10),
+          },
+        });
+
+        // Clean up the reset token
         await prisma.session.delete({
           where: { id: token },
         });

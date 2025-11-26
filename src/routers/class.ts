@@ -472,9 +472,13 @@ export const classRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { classCode } = input;
 
+      // Case-insensitive search for invite code
       const session = await prisma.session.findFirst({
         where: {
-          id: classCode,
+          id: {
+            equals: classCode,
+            mode: 'insensitive',
+          },
         },
       });
 

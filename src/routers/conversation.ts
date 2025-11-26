@@ -148,46 +148,52 @@ export const conversationRouter = createTRPCRouter({
 
       // For DMs, check if conversation already exists
       if (type === 'DM') {
-        const existingDM = await prisma.conversation.findFirst({
+        // Get the target user's ID from their username
+        const targetUser = await prisma.user.findFirst({
+          where: { username: memberIds[0] },
+          select: { id: true, username: true },
+        });
+
+        if (!targetUser) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: `User "${memberIds[0]}" not found`,
+          });
+        }
+
+        // Find all DM conversations where current user is a member
+        const existingDMs = await prisma.conversation.findMany({
           where: {
             type: 'DM',
             members: {
-              every: {
-                userId: {
-                  in: [userId, memberIds[0]],
-                },
-              },
-            },
-            AND: {
-              members: {
-                some: {
-                  userId,
-                },
+              some: {
+                userId,
               },
             },
           },
           include: {
             members: {
-              include: {
-                user: {
-                  select: {
-                    id: true,
-                    username: true,
-                    profile: {
-                      select: {
-                        displayName: true,
-                        profilePicture: true,
-                      },
-                    },
-                  },
-                },
+              select: {
+                userId: true,
               },
             },
           },
         });
 
+        // Check if any of these conversations has exactly 2 members (current user + target user)
+        const existingDM = existingDMs.find(conv => {
+          const memberUserIds = conv.members.map(m => m.userId);
+          return memberUserIds.length === 2 &&
+                 memberUserIds.includes(userId) &&
+                 memberUserIds.includes(targetUser.id);
+        });
+
         if (existingDM) {
-          return existingDM;
+          // Conversation already exists, throw error with friendly message
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: `A conversation with ${targetUser.username} already exists`,
+          });
         }
       }
 

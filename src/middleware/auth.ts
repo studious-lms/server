@@ -1,6 +1,7 @@
 import { TRPCError } from '@trpc/server';
 import { prisma } from '../lib/prisma.js';
 import type { MiddlewareContext } from '../types/trpc.js';
+import * as Sentry from "@sentry/node";
 
 export const createAuthMiddleware = (t: any) => {
 
@@ -50,6 +51,7 @@ export const createAuthMiddleware = (t: any) => {
         },
       });
     } catch (error) {
+      Sentry.captureException(error);
       throw new TRPCError({
         code: 'UNAUTHORIZED',
         message: 'Invalid user data',

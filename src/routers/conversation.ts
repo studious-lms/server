@@ -194,7 +194,7 @@ export const conversationRouter = createTRPCRouter({
       // Verify all members exist
       const members = await prisma.user.findMany({
         where: {
-          username: {
+          id: {
             in: memberIds,
           },
         },
@@ -223,7 +223,7 @@ export const conversationRouter = createTRPCRouter({
                 role: type === 'GROUP' ? 'ADMIN' : 'MEMBER',
               },
               ...memberIds.map((memberId) => ({
-                userId: members.find((member) => member.username === memberId)!.id,
+                userId: members.find((member) => member.id === memberId)!.id,
                 role: 'MEMBER' as const,
               })),
             ],

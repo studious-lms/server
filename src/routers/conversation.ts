@@ -192,7 +192,7 @@ export const conversationRouter = createTRPCRouter({
       }
 
       // Verify all members exist
-      const members = await prisma.user.findMany({
+      const membersWithIds = await prisma.user.findMany({
         where: {
           id: {
             in: memberIds,
@@ -203,6 +203,20 @@ export const conversationRouter = createTRPCRouter({
           username: true,
         },
       });
+
+      const membersWithUsernames = await prisma.user.findMany({
+        where: {
+          username: {
+            in: memberIds,
+          },
+        },
+        select: {
+          id: true,
+          username: true,
+        },
+      });
+
+      const members = [...membersWithIds, ...membersWithUsernames];
 
       if (members.length !== memberIds.length) {
         throw new TRPCError({
@@ -222,8 +236,8 @@ export const conversationRouter = createTRPCRouter({
                 userId,
                 role: type === 'GROUP' ? 'ADMIN' : 'MEMBER',
               },
-              ...memberIds.map((memberId) => ({
-                userId: members.find((member) => member.id === memberId)!.id,
+              ...members.map((member) => ({
+                userId: member.id,
                 role: 'MEMBER' as const,
               })),
             ],

@@ -1139,19 +1139,12 @@ export const assignmentRouter = createTRPCRouter({
       };
     }),
 
-  getSubmissionById: protectedTeacherProcedure
+  getSubmissionById: protectedClassMemberProcedure
     .input(z.object({
-      submissionId: z.string(),
       classId: z.string(),
+      submissionId: z.string(),
     }))
     .query(async ({ ctx, input }) => {
-      if (!ctx.user) {
-        throw new TRPCError({
-          code: "UNAUTHORIZED",
-          message: "User must be authenticated",
-        });
-      }
-
       const { submissionId, classId } = input;
 
       const submission = await prisma.submission.findFirst({
@@ -1162,7 +1155,7 @@ export const assignmentRouter = createTRPCRouter({
             class: {
               teachers: {
                 some: {
-                  id: ctx.user.id
+                  id: ctx.user?.id
                 }
               }
             }

@@ -174,11 +174,11 @@ async function getUnifiedList(tx: any, classId: string) {
 // Updated to batch updates to prevent timeouts with large lists
 async function normalizeUnifiedList(tx: any, classId: string, orderedItems: Array<{ id: string; type: 'section' | 'assignment' }>) {
   const BATCH_SIZE = 10; // Process 10 items at a time to avoid overwhelming the transaction
-  
+
   // Group items by type for more efficient updates
   const sections: Array<{ id: string; order: number }> = [];
   const assignments: Array<{ id: string; order: number }> = [];
-  
+
   orderedItems.forEach((item, index) => {
     const orderData = { id: item.id, order: index + 1 };
     if (item.type === 'section') {
@@ -187,7 +187,7 @@ async function normalizeUnifiedList(tx: any, classId: string, orderedItems: Arra
       assignments.push(orderData);
     }
   });
-  
+
   // Process updates in batches
   const processBatch = async (items: Array<{ id: string; order: number }>, type: 'section' | 'assignment') => {
     for (let i = 0; i < items.length; i += BATCH_SIZE) {
@@ -203,7 +203,7 @@ async function normalizeUnifiedList(tx: any, classId: string, orderedItems: Arra
       );
     }
   };
-  
+
   // Process sections and assignments sequentially to avoid transaction overload
   await processBatch(sections, 'section');
   await processBatch(assignments, 'assignment');
@@ -319,7 +319,7 @@ export const assignmentRouter = createTRPCRouter({
       return updated;
     }),
 
-    move: protectedTeacherProcedure
+  move: protectedTeacherProcedure
     .input(z.object({
       id: z.string(),
       classId: z.string(),
@@ -403,13 +403,13 @@ export const assignmentRouter = createTRPCRouter({
       }
 
       // Prepare submission data outside transaction
-      const submissionData = studentIds && studentIds.length > 0 
+      const submissionData = studentIds && studentIds.length > 0
         ? studentIds.map((studentId) => ({
-            student: { connect: { id: studentId } }
-          }))
+          student: { connect: { id: studentId } }
+        }))
         : classData.students.map((student) => ({
-            student: { connect: { id: student.id } }
-          }));
+          student: { connect: { id: student.id } }
+        }));
 
       const teacherId = ctx.user.id;
 
@@ -515,7 +515,7 @@ export const assignmentRouter = createTRPCRouter({
             order: { increment: 1 }
           }
         });
-        
+
         await tx.section.updateMany({
           where: {
             classId: classId,
@@ -580,12 +580,12 @@ export const assignmentRouter = createTRPCRouter({
 
       // Execute file operations in parallel
       await Promise.all(fileOperations);
-      
+
       // Send notifications asynchronously (non-blocking)
       sendNotifications(classData.students.map(student => student.id), {
         title: `🔔 New assignment for ${classData.name}`,
         content:
-        `The assignment "${title}" has been created in ${classData.name}.\n
+          `The assignment "${title}" has been created in ${classData.name}.\n
         Due date: ${new Date(dueDate).toLocaleDateString()}.
         [Link to assignment](/class/${classId}/assignments/${assignment.id})`
       }).catch(error => {
@@ -639,10 +639,10 @@ export const assignmentRouter = createTRPCRouter({
           },
         }),
         prisma.class.findFirst({
-          where: { 
-            assignments: { 
-              some: { id } 
-            } 
+          where: {
+            assignments: {
+              some: { id }
+            }
           },
           include: {
             students: {
@@ -660,13 +660,13 @@ export const assignmentRouter = createTRPCRouter({
       }
 
       // Prepare submission data outside transaction if needed
-      const submissionData = studentIds && studentIds.length > 0 
+      const submissionData = studentIds && studentIds.length > 0
         ? studentIds.map((studentId) => ({
-            student: { connect: { id: studentId } }
-          }))
+          student: { connect: { id: studentId } }
+        }))
         : classData?.students.map((student) => ({
-            student: { connect: { id: student.id } }
-          }));
+          student: { connect: { id: student.id } }
+        }));
 
       // Handle file deletion operations outside transaction
       const fileDeletionPromises: Promise<void>[] = [];
@@ -1153,11 +1153,22 @@ export const assignmentRouter = createTRPCRouter({
           assignment: {
             classId,
             class: {
-              teachers: {
-                some: {
-                  id: ctx.user?.id
+              OR: [
+                {
+                  teachers: {
+                    some: {
+                      id: ctx.user?.id
+                    }
+                  }
+                },
+                {
+                  students: {
+                    some: {
+                      id: ctx.user?.id
+                    }
+                  }
                 }
-              }
+              ],
             }
           },
         },

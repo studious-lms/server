@@ -53,8 +53,8 @@ export const createAuthMiddleware = (t: any) => {
     } catch (error) {
       Sentry.captureException(error);
       throw new TRPCError({
-        code: 'UNAUTHORIZED',
-        message: 'Invalid user data',
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'Internal server error',
       });
     }
   });

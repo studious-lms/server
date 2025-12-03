@@ -62,21 +62,6 @@ app.use(cors({
   optionsSuccessStatus: 200
 }));
 
-// Handle preflight OPTIONS requests
-app.options('*', (req, res) => {
-  const origin = req.headers.origin;
-  if (origin && allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-  } else {
-    res.header('Access-Control-Allow-Origin', 'http://localhost:3000');
-  }
-  
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, x-user');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.sendStatus(200);
-});
-
 // CORS debugging middleware
 app.use((req, res, next) => {
   if (req.method === 'OPTIONS' || req.path.includes('trpc')) {

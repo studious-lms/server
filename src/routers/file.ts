@@ -73,6 +73,16 @@ export const fileRouter = createTRPCRouter({
                 }
               }
             }
+          },
+          announcement: {
+            include: {
+              class: {
+                include: {
+                  students: true,
+                  teachers: true
+                }
+              }
+            }
           }
         }
       });
@@ -92,18 +102,30 @@ export const fileRouter = createTRPCRouter({
       // Check if user is a teacher of the class
       if (file.assignment?.class) {
         classId = file.assignment.class.id;
-        hasAccess = file.assignment.class.teachers.some(teacher => teacher.id === userId) || false;
+        const isTeacher = file.assignment.class.teachers.some(teacher => teacher.id === userId);
+        const isStudent = file.assignment.class.students.some(student => student.id === userId);
+        logger.info(`Assignment file access check - userId: ${userId}, isTeacher: ${isTeacher}, isStudent: ${isStudent}`);
+        hasAccess = isTeacher || isStudent;
+      }
+
+      // Check if user has access to announcement files (teachers or students in the class)
+      if ((file as any).announcement?.class) {
+        classId = (file as any).announcement.class.id;
+        const isTeacher = (file as any).announcement.class.teachers.some((teacher: any) => teacher.id === userId);
+        const isStudent = (file as any).announcement.class.students.some((student: any) => student.id === userId);
+        logger.info(`Announcement file access check - userId: ${userId}, isTeacher: ${isTeacher}, isStudent: ${isStudent}`);
+        hasAccess = hasAccess || isTeacher || isStudent;
       }
 
       if (file.submission?.assignment?.classId) {
         classId = file.submission.assignment.classId;
-        hasAccess = file.submission?.studentId === userId || false;
+        hasAccess = hasAccess || file.submission?.studentId === userId || false;
         if (!hasAccess) hasAccess = file.submission.assignment.class.teachers.some(teacher => teacher.id === userId) || false;
       }
 
       if (file.annotations?.assignment?.classId) {
         classId = file.annotations?.assignment.classId;
-        hasAccess = file.annotations?.studentId === userId || false;
+        hasAccess = hasAccess || file.annotations?.studentId === userId || false;
         if (!hasAccess) hasAccess = file.annotations.assignment.class.teachers.some(teacher => teacher.id === userId) || false;
       }
 
@@ -114,8 +136,10 @@ export const fileRouter = createTRPCRouter({
 
       // Check if file is in a folder and user has access to the class
       if (file.folder?.class) {
-        hasAccess = hasAccess || file.folder.class.teachers.some(teacher => teacher.id === userId);
-        hasAccess = hasAccess || file.folder.class.students.some(student => student.id === userId);
+        const isTeacher = file.folder.class.teachers.some(teacher => teacher.id === userId);
+        const isStudent = file.folder.class.students.some(student => student.id === userId);
+        hasAccess = hasAccess || isTeacher;
+        hasAccess = hasAccess || isStudent;
       }
 
       if (!hasAccess) {

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import { TRPCError } from "@trpc/server";
-import { addDays, startOfDay, endOfDay } from "date-fns";
+import { addDays, addMonths, subMonths, startOfDay, endOfDay } from "date-fns";
 
 export const agendaRouter = createTRPCRouter({
   get: protectedProcedure
@@ -17,8 +17,11 @@ export const agendaRouter = createTRPCRouter({
         });
       }
 
-      const weekStart = startOfDay(new Date(input.weekStart));
-      const weekEnd = endOfDay(addDays(weekStart, 6));
+      // Expand query range to 6 months (3 months before and after the reference date)
+      // to allow calendar navigation and ensure newly created events are visible
+      const referenceDate = new Date(input.weekStart);
+      const rangeStart = startOfDay(subMonths(referenceDate, 3));
+      const rangeEnd = endOfDay(addMonths(referenceDate, 3));
 
       const [personalEvents, classEvents] = await Promise.all([
         // Get personal events
@@ -26,8 +29,8 @@ export const agendaRouter = createTRPCRouter({
           where: {
             userId: ctx.user.id,
             startTime: {
-              gte: weekStart,
-              lte: weekEnd,
+              gte: rangeStart,
+              lte: rangeEnd,
             },
             class: {
               is: null,
@@ -59,8 +62,8 @@ export const agendaRouter = createTRPCRouter({
               ],
             },
             startTime: {
-              gte: weekStart,
-              lte: weekEnd,
+              gte: rangeStart,
+              lte: rangeEnd,
             },
           },
           include: {

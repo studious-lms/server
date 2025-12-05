@@ -465,6 +465,51 @@ export const classRouter = createTRPCRouter({
         removedUserId: userId,
       };
     }),
+  leaveClass: protectedProcedure
+    .input(z.object({
+      classId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { classId } = input;
+      const userId = ctx.user?.id;
+
+      if (!userId) {
+        throw new TRPCError({
+          code: 'UNAUTHORIZED',
+          message: 'User not authenticated',
+        });
+      }
+
+      const classData = await prisma.class.findFirst({
+        where: {
+          id: classId,
+          students: {
+            some: { id: userId },
+          },
+        },
+      });
+
+      if (!classData) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Class not found or you are not a student in this class',
+        });
+      }
+
+      await prisma.class.update({
+        where: { id: classId },
+        data: {
+          students: {
+            disconnect: { id: userId },
+          },
+        },
+      });
+
+      return {
+        success: true,
+        leftClassId: classId,
+      };
+    }),
   join: protectedProcedure
     .input(z.object({
       classCode: z.string(),
@@ -680,7 +725,7 @@ export const classRouter = createTRPCRouter({
 
         return events;
       }),
-    listMarkSchemes: protectedTeacherProcedure
+    listMarkSchemes: protectedClassMemberProcedure
       .input(z.object({
         classId: z.string(),
       }))
@@ -759,7 +804,7 @@ export const classRouter = createTRPCRouter({
 
         return markScheme;
       }),
-    listGradingBoundaries: protectedTeacherProcedure
+    listGradingBoundaries: protectedClassMemberProcedure
       .input(z.object({
         classId: z.string(),
       }))

@@ -16,6 +16,7 @@ import { notificationRouter } from "./notifications.js";
 import { conversationRouter } from "./conversation.js";
 import { messageRouter } from "./message.js";
 import { labChatRouter } from "./labChat.js";
+import { newtonChatRouter } from "./newtonChat.js";
 import { marketingRouter } from "./marketing.js";
 import { worksheetRouter } from "./worksheet.js";
 import { commentRouter } from "./comment.js";
@@ -36,6 +37,7 @@ export const appRouter = createTRPCRouter({
   conversation: conversationRouter,
   message: messageRouter,
   labChat: labChatRouter,
+  newtonChat: newtonChatRouter,
   marketing: marketingRouter,
   worksheet: worksheetRouter,
   comment: commentRouter,

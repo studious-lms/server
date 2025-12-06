@@ -489,7 +489,6 @@ IMPORTANT:
     const completion = await openAIClient.chat.completions.create({
       model: 'gpt-5-nano',
       messages,
-      temperature: 0.7,
     });
 
     const response = completion.choices[0]?.message?.content;

@@ -52,6 +52,7 @@ export const createAuthMiddleware = (t: any) => {
       });
     } catch (error) {
       Sentry.captureException(error);
+      console.error(error);
       throw new TRPCError({
         code: 'INTERNAL_SERVER_ERROR',
         message: 'Internal server error',

@@ -43,14 +43,13 @@ export const gradeWorksheetPipeline = async (worksheetResponseId: string) => {
         },
     });
 
-    console.log(worksheetResponse);
-
     if (!worksheetResponse) {
         logger.error('Worksheet response not found');
         throw new Error('Worksheet response not found');
     }
 
-    worksheetResponse.responses.forEach(async (response) => {
+    // Use for...of instead of forEach to properly handle async operations
+    for (const response of worksheetResponse.responses) {
         logger.info('Grading question', { questionId: response.questionId });
         const question = response.question;
         const comments = response.comments;
@@ -148,5 +147,5 @@ export const gradeWorksheetPipeline = async (worksheetResponseId: string) => {
             });
             throw error;
         }
-    });
+    };
 };

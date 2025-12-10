@@ -59,7 +59,9 @@ app.use(cors({
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-user'],
-  optionsSuccessStatus: 200
+  preflightContinue: false, // Important: stop further handling of OPTIONS
+  optionsSuccessStatus: 204, // Recommended for modern browsers
+
 }));
 
 // CORS debugging middleware

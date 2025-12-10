@@ -92,25 +92,25 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use("/panel", async (_, res) => {
-  if (env.NODE_ENV !== "development") {
-    return res.status(404).send("Not Found");
-  }
+// app.use("/panel", async (_, res) => {
+//   if (env.NODE_ENV !== "development") {
+//     return res.status(404).send("Not Found");
+//   }
 
-  // Dynamically import renderTrpcPanel only in development
-  const { renderTrpcPanel } = await import("trpc-ui");
+//   // Dynamically import renderTrpcPanel only in development
+//   const { renderTrpcPanel } = await import("trpc-ui");
 
-  return res.send(
-    renderTrpcPanel(appRouter, {
-      url: "/trpc", // Base url of your trpc server
-      meta: {
-        title: "Studious Backend",
-        description:
-          "This is the backend for the Studious application.",
-      },
-    })
-  );
-});
+//   return res.send(
+//     renderTrpcPanel(appRouter, {
+//       url: "/trpc", // Base url of your trpc server
+//       meta: {
+//         title: "Studious Backend",
+//         description:
+//           "This is the backend for the Studious application.",
+//       },
+//     })
+//   );
+// });
 
 
 // Create HTTP server

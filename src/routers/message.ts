@@ -103,6 +103,7 @@ export const messageRouter = createTRPCRouter({
             name: attachment.name,
             type: attachment.type,
           })),
+          meta: message.meta as Record<string, any>,
           mentions: message.mentions.map((mention) => ({
             user: mention.user,
           })),
@@ -111,7 +112,6 @@ export const messageRouter = createTRPCRouter({
         nextCursor,
       };
     }),
-
   send: protectedProcedure
     .input(
       z.object({

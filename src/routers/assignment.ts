@@ -21,6 +21,7 @@ const directFileSchema = z.object({
 
 const createAssignmentSchema = z.object({
   classId: z.string(),
+  id: z.string().optional(),
   title: z.string(),
   instructions: z.string(),
   dueDate: z.string(),
@@ -319,6 +320,20 @@ export const assignmentRouter = createTRPCRouter({
       return updated;
     }),
 
+  exists: protectedClassMemberProcedure
+    .input(z.object({
+      id: z.string(),
+    }))
+    .query(async ({ ctx, input }) => {
+      if (!ctx.user) {
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'User must be authenticated' });
+      }
+      const assignment = await prisma.assignment.findUnique({
+        where: { id: input.id },
+      });
+      
+      return assignment ? true : false;
+    }),
   move: protectedTeacherProcedure
     .input(z.object({
       id: z.string(),
@@ -358,7 +373,7 @@ export const assignmentRouter = createTRPCRouter({
   create: protectedTeacherProcedure
     .input(createAssignmentSchema)
     .mutation(async ({ ctx, input }) => {
-      const { classId, title, instructions, dueDate, files, existingFileIds, aiPolicyLevel, acceptFiles, acceptExtendedResponse, acceptWorksheet, worksheetIds, gradeWithAI, studentIds, maxGrade, graded, weight, sectionId, type, markSchemeId, gradingBoundaryId, inProgress } = input;
+      const { classId, id, title, instructions, dueDate, files, existingFileIds, aiPolicyLevel, acceptFiles, acceptExtendedResponse, acceptWorksheet, worksheetIds, gradeWithAI, studentIds, maxGrade, graded, weight, sectionId, type, markSchemeId, gradingBoundaryId, inProgress } = input;
 
       if (!ctx.user) {
         throw new TRPCError({
@@ -418,6 +433,7 @@ export const assignmentRouter = createTRPCRouter({
         // Create assignment with order 0 (will be at top)
         const created = await tx.assignment.create({
           data: {
+            ...(id && { id }),
             title,
             instructions,
             dueDate: new Date(dueDate),
@@ -1290,7 +1306,6 @@ export const assignmentRouter = createTRPCRouter({
 
       if (submit !== undefined) {
         // Toggle submission status
-
         if (submission.assignment.acceptWorksheet && submission.assignment.gradeWithAI) {
 
           // Grade the submission with AI

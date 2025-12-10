@@ -48,6 +48,7 @@ export async function sendAIMessage(
     attachments?: {
       connect: { id: string }[];
     };
+    meta?: Record<string, any>;
     customSender?: {
       displayName: string;
       profilePicture?: string | null;
@@ -59,6 +60,7 @@ export async function sendAIMessage(
   senderId: string;
   conversationId: string;
   createdAt: Date;
+  meta?: Record<string, any>;
 }> {
   // Ensure AI user exists
   await ensureAIUserExists();
@@ -73,6 +75,9 @@ export async function sendAIMessage(
         attachments: {
           connect: options.attachments.connect,
         },
+      }),
+      ...(options.meta && {
+        meta: options.meta,
       }),
     },
     include: {
@@ -106,6 +111,7 @@ export async function sendAIMessage(
       createdAt: aiMessage.createdAt,
       sender: senderInfo,
       mentionedUserIds: [],
+      meta: aiMessage.meta,
       attachments: aiMessage.attachments.map(attachment => ({
         id: attachment.id,
         attachmentId: attachment.id,
@@ -125,23 +131,52 @@ export async function sendAIMessage(
     senderId: getAIUserId(),
     conversationId: aiMessage.conversationId,
     createdAt: aiMessage.createdAt,
+    meta: aiMessage.meta as Record<string, any>,
   };
 }
 
-export async function inference(
-  content: string,
+export async function inference<T>(
+  content: string | OpenAI.Chat.Completions.ChatCompletionMessageParam[],
   format?: ZodSchema
-): Promise<string | object> {
+): Promise<T> {
   try {
+
+    if (!format) {
+      const completion = await openAIClient.chat.completions.create({
+        model: 'gpt-5-nano',
+        messages: typeof content === 'string' ? [
+          {
+            role: 'user',
+            content: content,
+          },
+        ] : content as Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
+      });
+
+      return completion.choices[0]?.message?.content as T;
+    }
 
     const completion = await openAIClient.responses.parse({
       model: 'gpt-5-nano',
-      input: [
+      input: typeof content === 'string' ? [
         {
           role: 'user',
           content: content,
         },
-      ],
+      ] : content as Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
+      ...(format ? { text: {
+          format: zodTextFormat(format, "newton_response_format"),
+        },
+      } : {}),
+    });
+
+    console.log({
+      model: 'gpt-5-nano',
+      input: typeof content === 'string' ? [
+        {
+          role: 'user',
+          content: content,
+        },
+      ] : content as Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
       ...(format ? { text: {
           format: zodTextFormat(format, "newton_response_format"),
         },

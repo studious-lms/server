@@ -1,10 +1,11 @@
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure, protectedTeacherProcedure } from "../trpc.js";
+import { createTRPCRouter, protectedClassMemberProcedure, protectedProcedure, protectedTeacherProcedure } from "../trpc.js";
 import { TRPCError } from "@trpc/server";
 import { prisma } from "../lib/prisma.js";
 
 const createSectionSchema = z.object({
   classId: z.string(),
+  id: z.string().optional(),
   name: z.string(),
   color: z.string().optional(),
 });
@@ -22,6 +23,24 @@ const deleteSectionSchema = z.object({
 });
 
 export const sectionRouter = createTRPCRouter({
+  exists: protectedClassMemberProcedure
+    .input(z.object({
+      id: z.string(),
+    }))
+    .query(async ({ ctx, input }) => {
+      if (!ctx.user) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "User must be authenticated",
+        });
+      }
+
+      const section = await prisma.section.findUnique({
+        where: { id: input.id },
+      });
+
+      return section ? true : false;
+    }),
   create: protectedTeacherProcedure
     .input(createSectionSchema)
     .mutation(async ({ ctx, input }) => {
@@ -53,6 +72,7 @@ export const sectionRouter = createTRPCRouter({
 
       const section = await prisma.section.create({
         data: {
+          ...(input.id && { id: input.id }),
           name: input.name,
           order: 0,
           class: {

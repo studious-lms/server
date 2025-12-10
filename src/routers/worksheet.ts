@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import { createTRPCRouter, protectedProcedure } from "../trpc.js";
+import { createTRPCRouter, protectedClassMemberProcedure, protectedProcedure } from "../trpc.js";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { GenerationStatus, WorksheetQuestionType } from "@prisma/client";
@@ -36,6 +36,22 @@ export const worksheetRouter = createTRPCRouter({
       }
 
       return worksheet;
+    }),
+
+  exists: protectedClassMemberProcedure
+    .input(z.object({
+      id: z.string(),
+    }))
+    .query(async ({ ctx, input }) => {
+      if (!ctx.user) {
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'User must be authenticated' });
+      }
+
+      const worksheet = await prisma.worksheet.findUnique({
+        where: { id: input.id },
+      });
+
+      return worksheet ? true : false;
     }),
 
   // List all worksheets for a class

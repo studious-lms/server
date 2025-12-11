@@ -34,8 +34,6 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(generalLimiter);
-
 const allowedOrigins = env.NODE_ENV === 'production'
 ? [
     'https://www.studious.sh',
@@ -63,6 +61,8 @@ app.use(cors({
   optionsSuccessStatus: 204, // Recommended for modern browsers
 
 }));
+
+app.use(generalLimiter);
 
 // CORS debugging middleware
 app.use((req, res, next) => {

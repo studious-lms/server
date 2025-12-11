@@ -120,17 +120,15 @@ export const newtonChatRouter = createTRPCRouter({
             title: 'Session with Newton Tutor',
           },
         });
+        generateAndSendNewtonIntroduction(
+          newtonChat.id,
+          newtonChat.conversationId,
+          submission.id
+        ).catch(error => {
+          logger.error('Failed to generate AI introduction:', { error, newtonChatId: result.id });
+        });
 
         return newtonChat;
-      });
-
-      // Generate AI introduction message in parallel (don't await - fire and forget)
-      generateAndSendNewtonIntroduction(
-        result.id,
-        result.conversationId,
-        submission.id
-      ).catch(error => {
-        logger.error('Failed to generate AI introduction:', { error, newtonChatId: result.id });
       });
 
       return {

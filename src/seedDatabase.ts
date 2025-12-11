@@ -8,6 +8,21 @@ export async function clearDatabase() {
     logger.info('Clearing database');
     await prisma.notification.deleteMany();
     
+    // Delete worksheet-related records
+    await prisma.studentQuestionProgress.deleteMany();
+    await prisma.studentWorksheetResponse.deleteMany();
+    await prisma.worksheetQuestion.deleteMany();
+    await prisma.worksheet.deleteMany();
+    
+    // Delete reactions (they reference announcements and comments)
+    await prisma.reaction.deleteMany();
+    
+    // Delete comments (they reference announcements and users)
+    await prisma.comment.deleteMany();
+    
+    // Delete NewtonChat (they reference submissions and conversations)
+    await prisma.newtonChat.deleteMany();
+    
     // Delete chat-related records
     await prisma.mention.deleteMany();
     await prisma.message.deleteMany();
@@ -39,8 +54,17 @@ export async function clearDatabase() {
     // Delete schools (which reference files for logos) - this will cascade delete the file references
     await prisma.school.deleteMany();
     
+    // Delete marketing-related records
+    await prisma.schoolDevelopementProgram.deleteMany();
+    await prisma.earlyAccessRequest.deleteMany();
+    
     // Finally delete all files
     await prisma.file.deleteMany();
+}
+
+// Helper function to generate DiceBear avatar URL
+function getDiceBearAvatar(seed: string): string {
+    return `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(seed)}`;
 }
 
 export async function createUser(email: string, password: string, username: string) {
@@ -109,7 +133,7 @@ export const seedDatabase = async () => {
         createUser('charlotte.walker@student.riverside.edu', 'student123', 'charlotte.walker'),
     ]);
 
-    // 4. Create User Profiles
+    // 4. Create User Profiles with DiceBear avatars
     await Promise.all([
         prisma.userProfile.create({
             data: {
@@ -118,6 +142,7 @@ export const seedDatabase = async () => {
                 bio: 'Biology teacher with 15 years of experience. Passionate about making science accessible to all students.',
                 location: 'Riverside, CA',
                 website: 'https://sarahjohnson-bio.com',
+                profilePicture: getDiceBearAvatar(teachers[0].username),
             }
         }),
         prisma.userProfile.create({
@@ -126,6 +151,7 @@ export const seedDatabase = async () => {
                 displayName: 'Mr. Michael Chen',
                 bio: 'Mathematics teacher and department head. Specializes in AP Calculus and Statistics.',
                 location: 'Riverside, CA',
+                profilePicture: getDiceBearAvatar(teachers[1].username),
             }
         }),
         prisma.userProfile.create({
@@ -134,18 +160,24 @@ export const seedDatabase = async () => {
                 displayName: 'Ms. Emma Davis',
                 bio: 'English Literature teacher. Loves fostering creative writing and critical thinking.',
                 location: 'Riverside, CA',
+                profilePicture: getDiceBearAvatar(teachers[2].username),
             }
         }),
     ]);
 
-    // Add profiles for some students
-    await Promise.all(students.slice(0, 6).map((student, index) => {
-        const names = ['Alex Martinez', 'Sophia Williams', 'James Brown', 'Olivia Taylor', 'Ethan Anderson', 'Ava Thomas'];
+    // Add profiles for all students with DiceBear avatars
+    await Promise.all(students.map((student, index) => {
+        const names = [
+            'Alex Martinez', 'Sophia Williams', 'James Brown', 'Olivia Taylor', 
+            'Ethan Anderson', 'Ava Thomas', 'Noah Jackson', 'Isabella White',
+            'Liam Harris', 'Mia Clark', 'Lucas Lewis', 'Charlotte Walker'
+        ];
         return prisma.userProfile.create({
             data: {
                 userId: student.id,
-                displayName: names[index],
-                bio: `Grade 11 student at Riverside High School.`,
+                displayName: names[index] || student.username,
+                bio: index < 6 ? `Grade 11 student at Riverside High School.` : undefined,
+                profilePicture: getDiceBearAvatar(student.username),
             }
         });
     }));

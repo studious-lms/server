@@ -33,6 +33,13 @@ const AnnouncementSelect = {
         select: {
             id: true,
             username: true,
+            profile: {
+                select: {
+                    displayName: true,
+                    profilePicture: true,
+                    profilePictureThumbnail: true,
+                },
+            },
         },
     },
     remarks: true,

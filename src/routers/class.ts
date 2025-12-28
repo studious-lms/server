@@ -26,10 +26,37 @@ export const classRouter = createTRPCRouter({
                 template: false,
               },
               select: {
+
                 id: true,
                 title: true,
                 type: true,
                 dueDate: true,
+              },
+            },
+            students: {
+              select: {
+                id: true,
+                username: true,
+                profile: {
+                  select: {
+                    displayName: true,
+                    profilePicture: true,
+                    profilePictureThumbnail: true,
+                  },
+                },
+              },
+            },
+            teachers: {
+              select: {
+                id: true,
+                username: true,
+                profile: {
+                  select: {
+                    displayName: true,
+                    profilePicture: true,
+                    profilePictureThumbnail: true,
+                  },
+                },
               },
             },
           },
@@ -57,6 +84,32 @@ export const classRouter = createTRPCRouter({
                 dueDate: true,
               },
             },
+            students: {
+              select: {
+                id: true,
+                username: true,
+                profile: {
+                  select: {
+                    displayName: true,
+                    profilePicture: true,
+                    profilePictureThumbnail: true,
+                  },
+                },
+              },
+            },
+            teachers: {
+              select: {
+                id: true,
+                username: true,
+                profile: {
+                  select: {
+                    displayName: true,
+                    profilePicture: true,
+                    profilePictureThumbnail: true,
+                  },
+                },
+              },
+            },
           },
         }),
       ]);
@@ -69,6 +122,7 @@ export const classRouter = createTRPCRouter({
           subject: cls.subject,
           dueToday: cls.assignments,
           assignments: cls.assignments,
+          members: [...cls.students, ...cls.teachers],
           color: cls.color,
         })),
         studentInClass: studentClasses.map(cls => ({
@@ -78,6 +132,7 @@ export const classRouter = createTRPCRouter({
           subject: cls.subject,
           dueToday: cls.assignments,
           assignments: cls.assignments,
+          members: [...cls.students, ...cls.teachers],
           color: cls.color,
         })),
       };

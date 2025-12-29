@@ -37,6 +37,7 @@ export const agendaRouter = createTRPCRouter({
             },
           },
           include: {
+            assignmentsAttached: true,
             class: true,
           },
         }),
@@ -67,6 +68,7 @@ export const agendaRouter = createTRPCRouter({
             },
           },
           include: {
+            assignmentsAttached: true,
             class: true,
           },
         }),

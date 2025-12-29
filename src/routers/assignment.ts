@@ -1015,6 +1015,7 @@ export const assignmentRouter = createTRPCRouter({
               endTime: true,
               location: true,
               remarks: true,
+              color: true,
             }
           },
           markScheme: {

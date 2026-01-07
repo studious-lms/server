@@ -264,7 +264,11 @@ export const generateAndSendNewtonIntroduction = async (
   Subject: ${submission.assignment.class.subject || 'General'}
   Instructions: ${submission.assignment.instructions || 'No specific instructions provided'}
   
-  You have access to fundemental html and SVG capabilities for drawing graphs and diagrams. Use this if needed by embedding it within the markdown output.
+  You have access mermaid.js for any diagrams u have to draw, and do it as such:
+
+  \`\`\`mermaid
+  <your mermaid code here>
+  \`\`\`
 
   Your role:
   - Help the student understand concepts related to their assignment

@@ -51,6 +51,10 @@ export const createAuthMiddleware = (t: any) => {
         },
       });
     } catch (error) {
+      // Re-throw TRPCErrors as-is (e.g., UNAUTHORIZED from invalid session)
+      if (error instanceof TRPCError) {
+        throw error;
+      }
       Sentry.captureException(error);
       console.error(error);
       throw new TRPCError({

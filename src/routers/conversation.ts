@@ -317,10 +317,10 @@ export const conversationRouter = createTRPCRouter({
       return conversation;
     }),
     addMember: protectedProcedure
-    .input(z.object({ conversationId: z.string(), memberId: z.string() }))
+    .input(z.object({ conversationId: z.string(), memberUsername: z.string() }))
     .mutation(async ({ input, ctx }) => {
       const userId = ctx.user!.id;
-      const { conversationId, memberId } = input;
+      const { conversationId, memberUsername } = input;
 
       const conversation = await prisma.conversation.findFirst({
         where: { id: conversationId, members: { some: { userId } } },
@@ -333,8 +333,19 @@ export const conversationRouter = createTRPCRouter({
         });
       }
 
+      const member = await prisma.user.findFirst({
+        where: { username: memberUsername },
+      });
+
+      if (!member) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Member not found',
+        });
+      }
+
       await prisma.conversationMember.create({
-        data: { userId: memberId, conversationId, role: 'MEMBER' },
+        data: { userId: member.id, conversationId, role: 'MEMBER' },
       });
 
       return conversation;

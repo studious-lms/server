@@ -16,7 +16,7 @@ const removeAllPreviousAIComments = async (worksheetQuestionProgressId: string) 
     });
 };
 
-const gradeWorksheetQuestion = async (worksheetResponseId: string) => {
+const gradeWorksheetQuestion = async (worksheetResponseId: string, worksheetQuestionProgressId: string) => {
 
     const worksheetResponse = await prisma.studentWorksheetResponse.findUnique({
         where: { id: worksheetResponseId },
@@ -28,17 +28,11 @@ const gradeWorksheetQuestion = async (worksheetResponseId: string) => {
     if (!worksheetResponse) {
         logger.error('Worksheet response not found');
         throw new Error('Worksheet response not found');
-    }
-
+    }    
 
     const studentQuestionProgress = await prisma.studentQuestionProgress.findFirst({
         where: {
-            studentWorksheetResponseId: worksheetResponseId,
-            status: {
-                not: {
-                    in: DO_NOT_INFERENCE_STATUSES,
-                },
-            },
+            id: worksheetQuestionProgressId,
         },
         include: {
             question: true,
@@ -198,7 +192,7 @@ export const gradeWorksheetPipeline = async (worksheetResponseId: string) => {
             return;
         }
 
-        gradeWorksheetQuestion(response.id);
+        gradeWorksheetQuestion(worksheetResponseId, response.id);
 
     };
 };
@@ -232,7 +226,7 @@ export const cancelGradePipeline = async (worksheetResponseId: string, worksheet
 
 export const regradeWorksheetPipeline = async (worksheetResponseId: string, worksheetQuestionProgressId: string) => {
     logger.info('Regrading worksheet response', { worksheetResponseId, worksheetQuestionProgressId });
-
+    try {
     const worksheetResponse = await prisma.studentWorksheetResponse.findUnique({
         where: { id: worksheetResponseId, },
         include: {
@@ -250,7 +244,30 @@ export const regradeWorksheetPipeline = async (worksheetResponseId: string, work
         data: { status: GenerationStatus.PENDING },
     });
 
-    gradeWorksheetQuestion(worksheetQuestionProgressId);
+console.log(updatedStudentQuestionProgress);
+
+    gradeWorksheetQuestion(worksheetResponseId, worksheetQuestionProgressId);
 
     return updatedStudentQuestionProgress;
+    } catch (error) {
+        await prisma.studentQuestionProgress.update({
+            where: { id: worksheetQuestionProgressId },
+            data: { status: GenerationStatus.FAILED },
+        });
+        const worksheetResponse = await prisma.studentWorksheetResponse.findUnique({
+            where: { id: worksheetResponseId, },
+            include: {
+                worksheet: true,
+            },
+        });
+        if (!worksheetResponse) {
+            logger.error('Worksheet response not found');
+            throw new Error('Worksheet response not found');
+        }
+        pusher.trigger(`class-${worksheetResponse.worksheet.classId}-worksheetSubmission-${worksheetResponse.id}`, `set-failed`, {
+            id: worksheetQuestionProgressId,
+        });
+        logger.error('Failed to regrade worksheet response', { error, worksheetResponseId, worksheetQuestionProgressId });
+        throw error;
+    }
 };

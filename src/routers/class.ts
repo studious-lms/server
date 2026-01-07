@@ -705,6 +705,7 @@ export const classRouter = createTRPCRouter({
               maxGrade: true,
               weight: true,
               markSchemeId: true,
+              dueDate: true,
               markScheme: {
                 select: {
                   structured: true,

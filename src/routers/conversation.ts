@@ -316,4 +316,51 @@ export const conversationRouter = createTRPCRouter({
 
       return conversation;
     }),
+    addMember: protectedProcedure
+    .input(z.object({ conversationId: z.string(), memberId: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.user!.id;
+      const { conversationId, memberId } = input;
+
+      const conversation = await prisma.conversation.findFirst({
+        where: { id: conversationId, members: { some: { userId } } },
+      });
+
+      if (!conversation) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Conversation not found or access denied',
+        });
+      }
+
+      await prisma.conversationMember.create({
+        data: { userId: memberId, conversationId, role: 'MEMBER' },
+      });
+
+      return conversation;
+    }),
+
+  removeMember: protectedProcedure
+    .input(z.object({ conversationId: z.string(), memberId: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.user!.id;
+      const { conversationId, memberId } = input;
+
+      const conversation = await prisma.conversation.findFirst({
+        where: { id: conversationId, members: { some: { userId } } },
+      });
+
+      if (!conversation) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Conversation not found or access denied',
+        });
+      }
+
+      await prisma.conversationMember.delete({
+        where: { userId_conversationId: { userId: memberId, conversationId } },
+      });
+
+      return conversation;
+    }),
 });

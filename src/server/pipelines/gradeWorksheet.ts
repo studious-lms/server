@@ -233,6 +233,8 @@ export const regradeWorksheetPipeline = async (worksheetResponseId: string, work
             worksheet: true,
         },
     });
+    
+    await removeAllPreviousAIComments(worksheetQuestionProgressId);
 
     if (!worksheetResponse) {
         logger.error('Worksheet response not found');

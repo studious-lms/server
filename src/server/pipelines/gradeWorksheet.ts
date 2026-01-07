@@ -51,7 +51,7 @@ const gradeWorksheetQuestion = async (worksheetResponseId: string) => {
         throw new Error('Student question progress not found');
     }
 
-    pusher.trigger(`class-${worksheetResponse.worksheet.classId}-worksheetSubmission-${worksheetResponse.id}`, `status-pending`, {
+    pusher.trigger(`class-${worksheetResponse.worksheet.classId}-worksheetSubmission-${worksheetResponse.id}`, `set-pending`, {
         id: studentQuestionProgress.id,
     });
 

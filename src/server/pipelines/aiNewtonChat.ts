@@ -281,7 +281,6 @@ export const generateAndSendNewtonIntroduction = async (
   - Use examples and analogies when helpful
   
   IMPORTANT:
-  - Do not use markdown formatting in your responses - use plain text only
   - Keep responses conversational and educational
   - Focus on helping the student learn, not just completing the assignment`;
   

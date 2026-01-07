@@ -6,6 +6,139 @@ import { inference } from "../../utils/inference.js";
 import { getAIUserId } from "../../utils/aiUser.js";
 import { pusher } from "../../lib/pusher.js";
 
+
+const removeAllPreviousAIComments = async (worksheetQuestionProgressId: string) => {
+    await prisma.comment.deleteMany({
+        where: {
+            studentQuestionProgressId: worksheetQuestionProgressId,
+            authorId: getAIUserId(),
+        },
+    });
+};
+
+const gradeWorksheetQuestion = async (worksheetResponseId: string) => {
+
+    const worksheetResponse = await prisma.studentWorksheetResponse.findUnique({
+        where: { id: worksheetResponseId },
+        include: {
+            worksheet: true,
+        },
+    });
+
+    if (!worksheetResponse) {
+        logger.error('Worksheet response not found');
+        throw new Error('Worksheet response not found');
+    }
+
+
+    const studentQuestionProgress = await prisma.studentQuestionProgress.findFirst({
+        where: {
+            studentWorksheetResponseId: worksheetResponseId,
+            status: {
+                not: {
+                    in: DO_NOT_INFERENCE_STATUSES,
+                },
+            },
+        },
+        include: {
+            question: true,
+            comments: true,
+        },
+    });
+
+    if (!studentQuestionProgress) {
+        logger.error('Student question progress not found');
+        throw new Error('Student question progress not found');
+    }
+
+    pusher.trigger(`class-${worksheetResponse.worksheet.classId}-worksheetSubmission-${worksheetResponse.id}`, `status-pending`, {
+        id: studentQuestionProgress.id,
+    });
+
+    const question = studentQuestionProgress.question;
+    const comments = studentQuestionProgress.comments;
+    const responseText = studentQuestionProgress.response;
+
+
+    try {
+        const apiResponse = await inference(
+            `Grade the following worksheet response:
+            
+            Question: ${question.question}
+            Response: ${responseText}
+
+            Comments: ${comments.map((comment) => comment.content).join('\n')}
+            Mark Scheme: ${JSON.stringify(question.markScheme)}
+            
+            Justify your reasoning by including comment(s) and mark the question please.         
+            Return ONLY JSON in the following format (fill in the values as per the question):
+           {
+            "isCorrect": <boolean>,
+            "points": <number>,
+            "markschemeState": [
+                { "id": <string>, "correct": <boolean> }
+            ],
+            "comments": [<string>, ...]
+            }
+            `,
+            z.object({
+                isCorrect: z.boolean(),
+                points: z.number(),
+                markschemeState: z.array(z.object({
+                    id: z.string(),
+                    correct: z.boolean(),
+                  })), // @note: this has to be converted to [id: string]: correct boolean
+                comments: z.array(z.string()),
+            }),
+        ).catch((error) => {
+            logger.error('Failed to grade worksheet response', { error });
+            throw error;
+        });
+
+        const updatedStudentQuestionProgress = await prisma.studentQuestionProgress.update({
+            where: { id: studentQuestionProgress.id, status: {
+                not: {
+                    in: ['CANCELLED'],
+                },
+            } },
+            data: {
+                status: GenerationStatus.COMPLETED,
+                isCorrect: (apiResponse as { isCorrect: boolean }).isCorrect,
+                points: (apiResponse as { points: number }).points,
+                markschemeState: (apiResponse as {
+                    markschemeState: { id: string; correct: boolean }[];
+                }).markschemeState.reduce((acc, curr) => {
+                    acc["item-" + curr.id] = curr.correct;
+                    return acc;
+                }, {} as Record<string, boolean>),
+                comments: {
+                    create: (apiResponse as {
+                        comments: string[];
+                    }).comments.map((commentContent) => ({
+                        content: commentContent,
+                        authorId: getAIUserId(),
+                    })),
+                },
+            },
+        });
+        pusher.trigger(`class-${worksheetResponse.worksheet.classId}-worksheetSubmission-${worksheetResponse.id}`, `set-completed`, {
+            id: updatedStudentQuestionProgress.id,
+        });
+
+        return updatedStudentQuestionProgress;
+    } catch (error) {
+        logger.error('Failed to grade worksheet response', { error, worksheetResponseId });
+        pusher.trigger(`class-${worksheetResponse.worksheet.classId}-worksheetSubmission-${worksheetResponse.id}`, `set-failed`, {
+            id: studentQuestionProgress.id,
+        });
+        await prisma.studentQuestionProgress.update({
+            where: { id: studentQuestionProgress.id },
+            data: { status: GenerationStatus.FAILED },
+        });
+        throw error;
+    }
+}
+
 /**
  * Grades and regrades worksheet (can fixed failed responses)
  * @param worksheetResponseId worksheet response id
@@ -51,9 +184,6 @@ export const gradeWorksheetPipeline = async (worksheetResponseId: string) => {
     // Use for...of instead of forEach to properly handle async operations
     for (const response of worksheetResponse.responses) {
         logger.info('Grading question', { questionId: response.questionId });
-        const question = response.question;
-        const comments = response.comments;
-        const responseText = response.response;
 
         const studentQuestionProgress = await prisma.studentQuestionProgress.update({
             where: { id: response.id, status: {
@@ -68,84 +198,59 @@ export const gradeWorksheetPipeline = async (worksheetResponseId: string) => {
             return;
         }
 
-        try {
-            const apiResponse = await inference(
-                `Grade the following worksheet response:
-                
-                Question: ${question.question}
-                Response: ${responseText}
+        gradeWorksheetQuestion(response.id);
 
-                Comments: ${comments.map((comment) => comment.content).join('\n')}
-                Mark Scheme: ${JSON.stringify(question.markScheme)}
-                
-                Justify your reasoning by including comment(s) and mark the question please.         
-                Return ONLY JSON in the following format (fill in the values as per the question):
-               {
-                "isCorrect": <boolean>,
-                "points": <number>,
-                "markschemeState": [
-                    { "id": <string>, "correct": <boolean> }
-                ],
-                "comments": [<string>, ...]
-                }
-                `,
-                z.object({
-                    isCorrect: z.boolean(),
-                    points: z.number(),
-                    markschemeState: z.array(z.object({
-                        id: z.string(),
-                        correct: z.boolean(),
-                      })), // @note: this has to be converted to [id: string]: correct boolean
-                    comments: z.array(z.string()),
-                }),
-            ).catch((error) => {
-                logger.error('Failed to grade worksheet response', { error });
-                throw error;
-            });
-
-            console.log(apiResponse);
-
-            const updatedStudentQuestionProgress = await prisma.studentQuestionProgress.update({
-                where: { id: studentQuestionProgress.id, status: {
-                    not: {
-                        in: ['CANCELLED'],
-                    },
-                } },
-                data: {
-                    status: GenerationStatus.COMPLETED,
-                    isCorrect: (apiResponse as { isCorrect: boolean }).isCorrect,
-                    points: (apiResponse as { points: number }).points,
-                    markschemeState: (apiResponse as {
-                        markschemeState: { id: string; correct: boolean }[];
-                    }).markschemeState.reduce((acc, curr) => {
-                        acc["item-" + curr.id] = curr.correct;
-                        return acc;
-                    }, {} as Record<string, boolean>),
-                    comments: {
-                        create: (apiResponse as {
-                            comments: string[];
-                        }).comments.map((commentContent) => ({
-                            content: commentContent,
-                            authorId: getAIUserId(),
-                        })),
-                    },
-                },
-            });
-            pusher.trigger(`class-${worksheetResponse.worksheet.classId}`, `ai-worksheet-updated-${worksheetResponse.id}`, {
-                success: true,
-            });
-
-            return updatedStudentQuestionProgress;
-        } catch (error) {
-            logger.error('Failed to grade worksheet response', { error, worksheetResponseId });
-            pusher.trigger(`class-${worksheetResponse.worksheet.classId}`, `ai-worksheet-updated-${worksheetResponse.id}`, {
-                success: false,
-            });
-            await prisma.studentQuestionProgress.update({
-                where: { id: studentQuestionProgress.id },
-                data: { status: GenerationStatus.FAILED },
-            });
-            throw error;
-        }
     };
+};
+
+export const cancelGradePipeline = async (worksheetResponseId: string, worksheetQuestionProgressId: string) => {
+    logger.info('Cancelling auto grading', { worksheetResponseId, worksheetQuestionProgressId });
+
+    const worksheetResponse = await prisma.studentWorksheetResponse.findUnique({
+        where: { id: worksheetResponseId },
+        include: {
+            worksheet: true,
+        },
+    });
+    if (!worksheetResponse) {
+        logger.error('Worksheet response not found');
+        throw new Error('Worksheet response not found');
+    }
+    const updatedStudentQuestionProgress = await prisma.studentQuestionProgress.update({
+        where: { id: worksheetQuestionProgressId },
+        data: { status: GenerationStatus.CANCELLED },
+    });
+
+    await removeAllPreviousAIComments(worksheetQuestionProgressId);
+
+    pusher.trigger(`class-${worksheetResponse.worksheet.classId}-worksheetSubmission-${worksheetResponse.id}`, `set-cancelled`, {
+        id: updatedStudentQuestionProgress.id,
+    });
+
+    return updatedStudentQuestionProgress;
+};
+
+export const regradeWorksheetPipeline = async (worksheetResponseId: string, worksheetQuestionProgressId: string) => {
+    logger.info('Regrading worksheet response', { worksheetResponseId, worksheetQuestionProgressId });
+
+    const worksheetResponse = await prisma.studentWorksheetResponse.findUnique({
+        where: { id: worksheetResponseId, },
+        include: {
+            worksheet: true,
+        },
+    });
+
+    if (!worksheetResponse) {
+        logger.error('Worksheet response not found');
+        throw new Error('Worksheet response not found');
+    }
+
+    const updatedStudentQuestionProgress = await prisma.studentQuestionProgress.update({
+        where: { id: worksheetQuestionProgressId },
+        data: { status: GenerationStatus.PENDING },
+    });
+
+    gradeWorksheetQuestion(worksheetQuestionProgressId);
+
+    return updatedStudentQuestionProgress;
 };

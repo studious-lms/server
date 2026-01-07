@@ -1836,6 +1836,7 @@ export const assignmentRouter = createTRPCRouter({
               name: true,
               startTime: true,
               endTime: true,
+              color: true,
             }
           }
         }
@@ -1970,6 +1971,7 @@ export const assignmentRouter = createTRPCRouter({
           endTime: true,
           location: true,
           remarks: true,
+          color: true,
         },
         orderBy: {
           startTime: 'asc'

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { GenerationStatus, WorksheetQuestionType } from "@prisma/client";
 import { commentSelect } from "./comment.js";
+import { cancelGradePipeline, regradeWorksheetPipeline } from "../server/pipelines/gradeWorksheet.js";
 
 type MCQOptions = {
   id: string;
@@ -415,22 +416,24 @@ export const worksheetRouter = createTRPCRouter({
 
       return updatedWorksheetResponse;
     }),
-  cancelAutoGrading: protectedProcedure
+  cancelGrading: protectedProcedure
     .input(z.object({
       worksheetResponseId: z.string(),
-      questionId: z.string(),
+      progressId: z.string(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const { worksheetResponseId, questionId } = input;
+      const { worksheetResponseId, progressId } = input;
 
-      const updatedQuestion = await prisma.studentQuestionProgress.update({
-        where: { id: questionId, studentWorksheetResponseId: worksheetResponseId },
-        data: {
-          status: GenerationStatus.CANCELLED,
-        },
-      });
-
-      return updatedQuestion;
+      return cancelGradePipeline(worksheetResponseId, progressId);
+    }),
+  regradeQuestion: protectedProcedure
+    .input(z.object({
+      worksheetResponseId: z.string(),
+      progressId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { worksheetResponseId, progressId } = input;
+      return regradeWorksheetPipeline(worksheetResponseId, progressId);
     }),
   // Grade a student's answer
   gradeAnswer: protectedProcedure

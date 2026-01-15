@@ -41,8 +41,17 @@ const gradeWorksheetQuestion = async (worksheetResponseId: string, worksheetQues
     });
 
     if (!studentQuestionProgress) {
-        logger.error('Student question progress not found');
-        throw new Error('Student question progress not found');
+       const updatedStudentQuestionProgress = await prisma.studentQuestionProgress.create({
+        data: {
+            studentId: worksheetResponse.studentId,
+            questionId: worksheetQuestionProgressId,
+            response: '',
+            isCorrect: false,
+            markschemeState: {},
+        },
+       });
+
+        return updatedStudentQuestionProgress;
     }
 
     pusher.trigger(`class-${worksheetResponse.worksheet.classId}-worksheetSubmission-${worksheetResponse.id}`, `set-pending`, {
@@ -245,8 +254,6 @@ export const regradeWorksheetPipeline = async (worksheetResponseId: string, work
         where: { id: worksheetQuestionProgressId },
         data: { status: GenerationStatus.PENDING },
     });
-
-console.log(updatedStudentQuestionProgress);
 
     gradeWorksheetQuestion(worksheetResponseId, worksheetQuestionProgressId);
 
